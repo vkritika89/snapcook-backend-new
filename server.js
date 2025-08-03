@@ -22,8 +22,11 @@ const axios = require("axios");
 
 const AZURE_ENDPOINT =
   "https://imageextractsnapcook.cognitiveservices.azure.com/"; // e.g. https://<your-resource-name>.cognitiveservices.azure.com/
-const AZURE_KEY =
-  "6UHgH6LKrnkeZqXrjI0dkoD9dEY7dg8AAGERD3aEBGvwe63omJH1JQQJ99BGACL93NaXJ3w3AAAFACOGS7ut";
+const AZURE_KEY = process.env.AZURE_VISION_KEY;
+if (!AZURE_KEY) {
+  console.error("❌ Missing AZURE_VISION_KEY in environment variables");
+  process.exit(1);
+}
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 if (!GEMINI_API_KEY) {
