@@ -17,21 +17,44 @@ app.use(cors());
 app.use(express.json());
 const upload = multer({ dest: "uploads/" });
 app.use(express.json());
+
+// Health check endpoint
+app.get("/", (req, res) => {
+  res.json({
+    status: "OK",
+    message: "SnapCook Backend is running!",
+    timestamp: new Date().toISOString(),
+    environment: {
+      azure_key_set: !!process.env.AZURE_VISION_KEY,
+      gemini_key_set: !!process.env.GEMINI_API_KEY,
+    },
+  });
+});
 const path = require("path");
 const axios = require("axios");
 
 const AZURE_ENDPOINT =
   "https://imageextractsnapcook.cognitiveservices.azure.com/"; // e.g. https://<your-resource-name>.cognitiveservices.azure.com/
 const AZURE_KEY = process.env.AZURE_VISION_KEY;
-if (!AZURE_KEY) {
-  console.error("❌ Missing AZURE_VISION_KEY in environment variables");
-  process.exit(1);
-}
+console.log("🔍 AZURE_VISION_KEY:", AZURE_KEY ? "SET" : "NOT SET");
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+console.log("🔍 GEMINI_API_KEY:", GEMINI_API_KEY ? "SET" : "NOT SET");
+
+if (!AZURE_KEY) {
+  console.error("❌ Missing AZURE_VISION_KEY in environment variables");
+  console.error(
+    "💡 Please set AZURE_VISION_KEY in Railway environment variables"
+  );
+  // Don't exit immediately, let the server start for debugging
+}
+
 if (!GEMINI_API_KEY) {
-  console.error("❌ Missing GEMINI_API_KEY in .env");
-  process.exit(1);
+  console.error("❌ Missing GEMINI_API_KEY in environment variables");
+  console.error(
+    "💡 Please set GEMINI_API_KEY in Railway environment variables"
+  );
+  // Don't exit immediately, let the server start for debugging
 }
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
