@@ -33,21 +33,23 @@ app.get("/", (req, res) => {
 const path = require("path");
 const axios = require("axios");
 
-const AZURE_ENDPOINT =
-  "https://imageextractsnapcook.cognitiveservices.azure.com/"; // e.g. https://<your-resource-name>.cognitiveservices.azure.com/
-const AZURE_KEY = process.env.AZURE_VISION_KEY;
-console.log("🔍 AZURE_VISION_KEY:", AZURE_KEY ? "SET" : "NOT SET");
+// Comment out Azure-related code
+// const AZURE_ENDPOINT =
+//   "https://imageextractsnapcook.cognitiveservices.azure.com/"; // e.g. https://<your-resource-name>.cognitiveservices.azure.com/
+// const AZURE_KEY = process.env.AZURE_VISION_KEY;
+// console.log("🔍 AZURE_VISION_KEY:", AZURE_KEY ? "SET" : "NOT SET");
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 console.log("🔍 GEMINI_API_KEY:", GEMINI_API_KEY ? "SET" : "NOT SET");
 
-if (!AZURE_KEY) {
-  console.error("❌ Missing AZURE_VISION_KEY in environment variables");
-  console.error(
-    "💡 Please set AZURE_VISION_KEY in Railway environment variables"
-  );
-  // Don't exit immediately, let the server start for debugging
-}
+// Remove Azure key validation
+// if (!AZURE_KEY) {
+//   console.error("❌ Missing AZURE_VISION_KEY in environment variables");
+//   console.error(
+//     "💡 Please set AZURE_VISION_KEY in Railway environment variables"
+//   );
+//   // Don't exit immediately, let the server start for debugging
+// }
 
 if (!GEMINI_API_KEY) {
   console.error("❌ Missing GEMINI_API_KEY in environment variables");
@@ -210,32 +212,6 @@ async function getYouTubeDescriptionAndThumbnail(url) {
   return { caption, thumbnail };
 }
 
-// app.post("/url-scan", async (req, res) => {
-//   const { url } = req.body;
-//   if (!url) return res.status(400).json({ error: "URL is required" });
-
-//   let captionText = "";
-
-//   try {
-//     if (url.includes("instagram.com")) {
-//       captionText = await getInstagramCaption(url);
-//     } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
-//       captionText = await getYouTubeDescription(url);
-//     }
-
-//     if (!captionText)
-//       return res.status(404).json({ error: "No caption found" });
-
-//     const structured = await processWithLLM(captionText);
-//     res.status(200).json({ structured });
-//   } catch (error) {
-//     console.error("URL Processing Error:", error);
-//     res
-//       .status(500)
-//       .json({ error: "Failed to process URL", detail: error.message });
-//   }
-// });
-
 app.post("/url-extract", async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "URL is required" });
@@ -278,35 +254,15 @@ app.post("/ocr", upload.single("photo"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No file received" });
     console.log("File received:", req.file);
 
-    const imagePath = path.join(__dirname, req.file.path);
-    const imageData = fs.readFileSync(imagePath);
+    const imagePath = req.file.path;
 
-    const response = await axios.post(
-      `${AZURE_ENDPOINT}/vision/v3.2/ocr?language=unk&detectOrientation=true`,
-      imageData,
-      {
-        headers: {
-          "Ocp-Apim-Subscription-Key": AZURE_KEY,
-          "Content-Type": "application/octet-stream",
-        },
-      }
-    );
+    // Use Tesseract instead of Azure Vision API
+    const {
+      data: { text },
+    } = await Tesseract.recognize(imagePath, "eng");
 
-    // const imagePath = req.file.path;
-    // const {
-    //   data: { text },
-    // } = await Tesseract.recognize(imagePath, "eng");
+    // Clean up the uploaded file
     fs.unlinkSync(imagePath);
-
-    // Parse Azure OCR response
-    const lines = [];
-    const regions = response.data.regions || [];
-    for (const region of regions) {
-      for (const line of region.lines) {
-        lines.push(line.words.map((w) => w.text).join(" "));
-      }
-    }
-    const text = lines.join("\n");
 
     if (!text || text.trim() === "") {
       return res.status(200).json({ extracted: "⚠️ No text found in image" });
@@ -316,10 +272,7 @@ app.post("/ocr", upload.single("photo"), async (req, res) => {
     const structured = await processWithLLM(text);
     res.status(200).json({ parsed: text, structured });
   } catch (err) {
-    console.error(
-      "Azure error:",
-      err.response ? err.response.data : err.message
-    );
+    console.error("OCR error:", err.message);
     res
       .status(500)
       .json({ error: "OCR processing failed", detail: err.message });
