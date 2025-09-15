@@ -4,6 +4,7 @@ const fs = require("fs");
 const cors = require("cors");
 const Tesseract = require("tesseract.js");
 const puppeteer = require("puppeteer");
+import OpenAI from "openai";
 const {
   GoogleGenerativeAI,
   HarmBlockThreshold,
@@ -11,6 +12,11 @@ const {
 } = require("@google/generative-ai");
 
 require("dotenv").config();
+
+const openai = new OpenAI({
+  apiKey:
+    "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", // set your key in .env
+});
 
 const app = express();
 app.use(cors());
@@ -60,75 +66,116 @@ if (!GEMINI_API_KEY) {
 }
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-async function processWithLLM(inputText) {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+// async function processWithLLM(inputText) {
+//   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-  const result = await model.generateContent({
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            text: `You are a helpful assistant that extracts recipe information from given text and return only structured JSON with:
-- title
-- ingredients (list of strings)
-- instructions (list of strings, where each string is a detailed step)
-- nutritional_info (estimated: total_calories, protein, carbs, fat)
-- cooking_time (if present)
-- serving_size (if present)
-- influencer (if present)
+//   const result = await model.generateContent({
+//     contents: [
+//       {
+//         role: "user",
+//         parts: [
+//           {
+//             text: `You are a helpful assistant that extracts recipe information from given text and return only structured JSON with:
+// - title
+// - ingredients (list of strings)
+// - instructions (list of strings, where each string is a detailed step)
+// - nutritional_info (estimated: total_calories, protein, carbs, fat)
+// - cooking_time (if present)
+// - serving_size (if present)
+// - influencer (if present)
 
-Text: ${inputText}`,
-          },
-        ],
-      },
+// Text: ${inputText}`,
+//           },
+//         ],
+//       },
+//     ],
+//     generationConfig: {
+//       responseMimeType: "application/json",
+//       responseSchema: {
+//         type: "object",
+//         properties: {
+//           title: { type: "string" },
+//           ingredients: { type: "array", items: { type: "string" } },
+//           instructions: { type: "array", items: { type: "string" } },
+//           influencer: { type: "string" },
+//           nutritional_info: {
+//             type: "object",
+//             properties: {
+//               total_calories: { type: "string" },
+//               protein: { type: "string" },
+//               carbs: { type: "string" },
+//               fat: { type: "string" },
+//             },
+//           },
+//           cooking_time: { type: "string" },
+//           serving_size: { type: "string" },
+//         },
+//         required: ["title", "ingredients", "instructions"],
+//       },
+//     },
+//     safetySettings: [
+//       {
+//         category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+//         threshold: HarmBlockThreshold.BLOCK_NONE,
+//       },
+//       {
+//         category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+//         threshold: HarmBlockThreshold.BLOCK_NONE,
+//       },
+//       {
+//         category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+//         threshold: HarmBlockThreshold.BLOCK_NONE,
+//       },
+//       {
+//         category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+//         threshold: HarmBlockThreshold.BLOCK_NONE,
+//       },
+//     ],
+//   });
+
+//   const response = await result.response;
+//   return JSON.parse(response.text());
+// }\
+
+import OpenAI from "openai";
+
+export async function processWithLLM(inputText) {
+  const systemPrompt = `You are a helpful assistant that extracts recipe information from given text and returns only valid JSON with the following structure:
+{
+  "title": string,
+  "ingredients": string[],
+  "instructions": string[],
+  "influencer": string (optional),
+  "nutritional_info": {
+    "total_calories": string,
+    "protein": string,
+    "carbs": string,
+    "fat": string
+  },
+  "cooking_time": string (optional),
+  "serving_size": string (optional)
+}
+
+Rules:
+- Always return only JSON.
+- If any field is not present, leave it empty ("" or empty object/array).
+- Each instruction step should be a complete detailed sentence.`;
+
+  const userPrompt = `Text: ${inputText}`;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini", // or "gpt-4o-mini" for faster/cheaper
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
     ],
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: "object",
-        properties: {
-          title: { type: "string" },
-          ingredients: { type: "array", items: { type: "string" } },
-          instructions: { type: "array", items: { type: "string" } },
-          influencer: { type: "string" },
-          nutritional_info: {
-            type: "object",
-            properties: {
-              total_calories: { type: "string" },
-              protein: { type: "string" },
-              carbs: { type: "string" },
-              fat: { type: "string" },
-            },
-          },
-          cooking_time: { type: "string" },
-          serving_size: { type: "string" },
-        },
-        required: ["title", "ingredients", "instructions"],
-      },
-    },
-    safetySettings: [
-      {
-        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-        threshold: HarmBlockThreshold.BLOCK_NONE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-        threshold: HarmBlockThreshold.BLOCK_NONE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-        threshold: HarmBlockThreshold.BLOCK_NONE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-        threshold: HarmBlockThreshold.BLOCK_NONE,
-      },
-    ],
+    temperature: 0,
+    response_format: { type: "json" }, // ensures strict JSON output
   });
 
-  const response = await result.response;
-  return JSON.parse(response.text());
+  const content = response.choices[0].message.content;
+
+  return JSON.parse(content);
 }
 
 async function getInstagramCaption(url) {
