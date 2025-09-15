@@ -14,8 +14,7 @@ const {
 require("dotenv").config();
 
 const openai = new OpenAI({
-  apiKey:
-    "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", // set your key in .env
+  apiKey: process.env.OPENAI_API_KEY, // set your key in .env
 });
 
 const app = express();
@@ -136,8 +135,6 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 //   const response = await result.response;
 //   return JSON.parse(response.text());
 // }\
-
-import OpenAI from "openai";
 
 export async function processWithLLM(inputText) {
   const systemPrompt = `You are a helpful assistant that extracts recipe information from given text and returns only valid JSON with the following structure:
