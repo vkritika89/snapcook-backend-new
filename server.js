@@ -1,17 +1,20 @@
-const express = require("express");
-const multer = require("multer");
-const fs = require("fs");
-const cors = require("cors");
-const Tesseract = require("tesseract.js");
-const puppeteer = require("puppeteer");
+import express from "express";
+import multer from "multer";
+import fs from "fs";
+import cors from "cors";
+import Tesseract from "tesseract.js";
+import puppeteer from "puppeteer";
 import OpenAI from "openai";
-const {
+import dotenv from "dotenv";
+import path from "path";
+import axios from "axios";
+import {
   GoogleGenerativeAI,
   HarmBlockThreshold,
   HarmCategory,
-} = require("@google/generative-ai");
+} from "@google/generative-ai";
 
-require("dotenv").config();
+dotenv.config();
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY, // set your key in .env
@@ -21,7 +24,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 const upload = multer({ dest: "uploads/" });
-app.use(express.json());
 
 // Health check endpoint
 app.get("/", (req, res) => {
@@ -35,106 +37,18 @@ app.get("/", (req, res) => {
     },
   });
 });
-const path = require("path");
-const axios = require("axios");
-
-// Comment out Azure-related code
-// const AZURE_ENDPOINT =
-//   "https://imageextractsnapcook.cognitiveservices.azure.com/"; // e.g. https://<your-resource-name>.cognitiveservices.azure.com/
-// const AZURE_KEY = process.env.AZURE_VISION_KEY;
-// console.log("🔍 AZURE_VISION_KEY:", AZURE_KEY ? "SET" : "NOT SET");
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 console.log("🔍 GEMINI_API_KEY:", GEMINI_API_KEY ? "SET" : "NOT SET");
-
-// Remove Azure key validation
-// if (!AZURE_KEY) {
-//   console.error("❌ Missing AZURE_VISION_KEY in environment variables");
-//   console.error(
-//     "💡 Please set AZURE_VISION_KEY in Railway environment variables"
-//   );
-//   // Don't exit immediately, let the server start for debugging
-// }
 
 if (!GEMINI_API_KEY) {
   console.error("❌ Missing GEMINI_API_KEY in environment variables");
   console.error(
     "💡 Please set GEMINI_API_KEY in Railway environment variables"
   );
-  // Don't exit immediately, let the server start for debugging
 }
+
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-
-// async function processWithLLM(inputText) {
-//   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-//   const result = await model.generateContent({
-//     contents: [
-//       {
-//         role: "user",
-//         parts: [
-//           {
-//             text: `You are a helpful assistant that extracts recipe information from given text and return only structured JSON with:
-// - title
-// - ingredients (list of strings)
-// - instructions (list of strings, where each string is a detailed step)
-// - nutritional_info (estimated: total_calories, protein, carbs, fat)
-// - cooking_time (if present)
-// - serving_size (if present)
-// - influencer (if present)
-
-// Text: ${inputText}`,
-//           },
-//         ],
-//       },
-//     ],
-//     generationConfig: {
-//       responseMimeType: "application/json",
-//       responseSchema: {
-//         type: "object",
-//         properties: {
-//           title: { type: "string" },
-//           ingredients: { type: "array", items: { type: "string" } },
-//           instructions: { type: "array", items: { type: "string" } },
-//           influencer: { type: "string" },
-//           nutritional_info: {
-//             type: "object",
-//             properties: {
-//               total_calories: { type: "string" },
-//               protein: { type: "string" },
-//               carbs: { type: "string" },
-//               fat: { type: "string" },
-//             },
-//           },
-//           cooking_time: { type: "string" },
-//           serving_size: { type: "string" },
-//         },
-//         required: ["title", "ingredients", "instructions"],
-//       },
-//     },
-//     safetySettings: [
-//       {
-//         category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-//         threshold: HarmBlockThreshold.BLOCK_NONE,
-//       },
-//       {
-//         category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-//         threshold: HarmBlockThreshold.BLOCK_NONE,
-//       },
-//       {
-//         category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-//         threshold: HarmBlockThreshold.BLOCK_NONE,
-//       },
-//       {
-//         category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-//         threshold: HarmBlockThreshold.BLOCK_NONE,
-//       },
-//     ],
-//   });
-
-//   const response = await result.response;
-//   return JSON.parse(response.text());
-// }\
 
 export async function processWithLLM(inputText) {
   const systemPrompt = `You are a helpful assistant that extracts recipe information from given text and returns only valid JSON with the following structure:
@@ -161,50 +75,18 @@ Rules:
   const userPrompt = `Text: ${inputText}`;
 
   const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini", // or "gpt-4o-mini" for faster/cheaper
+    model: "gpt-4o-mini",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
     temperature: 0,
-    response_format: { type: "json" }, // ensures strict JSON output
+    response_format: { type: "json" },
   });
 
   const content = response.choices[0].message.content;
 
   return JSON.parse(content);
-}
-
-async function getInstagramCaption(url) {
-  const browser = await puppeteer.launch({
-    headless: "new",
-    args: ["--no-sandbox"],
-  });
-  const page = await browser.newPage();
-  await page.goto(url, { waitUntil: "networkidle2", timeout: 0 });
-
-  const caption = await page.$eval(
-    "meta[property='og:description']",
-    (el) => el.content
-  );
-  await browser.close();
-  return caption;
-}
-
-async function getYouTubeDescription(url) {
-  const browser = await puppeteer.launch({
-    headless: "new",
-    args: ["--no-sandbox"],
-  });
-  const page = await browser.newPage();
-  await page.goto(url, { waitUntil: "networkidle2", timeout: 0 });
-
-  const caption = await page.$eval(
-    "meta[name='description']",
-    (el) => el.content
-  );
-  await browser.close();
-  return caption;
 }
 
 async function getInstagramCaptionAndThumbnail(url) {
@@ -279,7 +161,6 @@ app.post("/url-extract", async (req, res) => {
 
     const structured = await processWithLLM(captionText);
 
-    // Attach thumbnail to structured result
     if (structured && typeof structured === "object") {
       structured.image = thumbnail;
     }
@@ -300,12 +181,10 @@ app.post("/ocr", upload.single("photo"), async (req, res) => {
 
     const imagePath = req.file.path;
 
-    // Use Tesseract instead of Azure Vision API
     const {
       data: { text },
     } = await Tesseract.recognize(imagePath, "eng");
 
-    // Clean up the uploaded file
     fs.unlinkSync(imagePath);
 
     if (!text || text.trim() === "") {
