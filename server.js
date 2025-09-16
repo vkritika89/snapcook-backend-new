@@ -81,7 +81,7 @@ Rules:
       { role: "user", content: userPrompt },
     ],
     temperature: 0,
-    response_format: { type: "json" },
+    response_format: { type: "json_object" },
   });
 
   const content = response.choices[0].message.content;
