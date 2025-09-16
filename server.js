@@ -70,7 +70,10 @@ export async function processWithLLM(inputText) {
 Rules:
 - Always return only JSON.
 - If any field is not present, leave it empty ("" or empty object/array).
-- Each instruction step should be a complete detailed sentence.`;
+- Each instruction step should be a complete detailed sentence.
+- Estimate total_calories, protein, carbs, and fat based on the ingredients and their mentioned quantities.
+- Return approximate values for the entire recipe (not per 100g).
+`;
 
   const userPrompt = `Text: ${inputText}`;
 
