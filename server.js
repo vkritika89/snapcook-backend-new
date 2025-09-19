@@ -210,21 +210,25 @@ app.post("/nutrition", async (req, res) => {
     const apiKey = process.env.OPENAI_API_KEY;
     const { recipeName, quantity } = req.body;
 
+    if (!recipeName || !quantity) {
+      return res
+        .status(400)
+        .json({ error: "recipeName and quantity are required" });
+    }
+
+    // 1️⃣ Ask OpenAI for 100g portion only
     const prompt = `You are a nutrition expert. Analyze if "${recipeName}" is a valid food item or recipe name.
 
 IMPORTANT RULES:
-1. If the input is NOT a real food item, recipe, or edible item (like random letters, gibberish, non-food words, or nonsense), return:
+1. If the input is NOT a real food item, recipe, or edible item, return:
 {
   "total": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0 },
   "ingredients": [],
   "imageUrl": ""
 }
 
-2. If it IS a real food/recipe, follow these steps:
-   - First, estimate the nutritional values of the food for a standard 100g portion.
-   - Then scale those values exactly by (${quantity} / 100) to get the final output for ${quantity}g.
+2. If it IS a real food/recipe, give nutritional breakdown for exactly 100g portion only:
 
-3. Output the final result like this:
 {
   "total": { "calories": X, "protein": X, "carbs": X, "fat": X },
   "ingredients": [
@@ -233,13 +237,8 @@ IMPORTANT RULES:
   ]
 }
 
-4. Always ensure all ingredient macros sum approximately to total macros.
-
-5. Always return valid JSON only, no explanations. All values must be numbers (not strings).
-
-6. Include a realistic food image URL that shows the actual recipe/food item.
-7. For imageUrl: perform a Google Images style search for the recipe name (e.g., "<recipe name> recipe"). Return ONE DIRECT, hotlinkable image URL (jpg/jpeg/png/webp) to the actual image file. Do NOT return an HTML page, search results, or Google redirect links (avoid urls containing "imgres", "google.com/search"). Prefer images hosted on reputable food sites (e.g., allrecipes.com, seriouseats.com, bbcgoodfood.com) or reliable CDNs (e.g., wp.com, cloudfront.net, gstatic.com) with at least 400x300 resolution. The image must clearly depict the requested food.
-8. If no suitable image is found, set imageUrl to an empty string.`;
+3. Return valid JSON only. All values must be numbers (not strings).
+4. Include a realistic imageUrl if available. Otherwise, set it to an empty string.`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -260,38 +259,31 @@ IMPORTANT RULES:
     }
 
     const data = await response.json();
-    console.log("OpenAI raw response:", JSON.stringify(data, null, 2));
+    const text = data?.choices?.[0]?.message?.content?.trim();
 
-    let result;
-    try {
-      const text = data?.choices?.[0]?.message?.content?.trim();
-      if (!text) throw new Error("OpenAI response did not contain text");
+    if (!text) throw new Error("OpenAI response did not contain text");
 
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON found in OpenAI response");
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No JSON found in OpenAI response");
 
-      result = JSON.parse(jsonMatch[0]);
-      console.log("OpenAI response:", result);
+    let result = JSON.parse(jsonMatch[0]);
 
-      // Optional: override image using your own fetchImageForRecipe()
-      const imageUrl = await fetchImageForRecipe(recipeName);
-      result.imageUrl = imageUrl || result.imageUrl || "";
-    } catch (e) {
-      console.error("Parse error:", e);
-      result = {
-        total: { calories: 300, protein: 20, carbs: 15, fat: 12 },
-        ingredients: [
-          {
-            name: recipeName,
-            calories: 300,
-            protein: 20,
-            carbs: 15,
-            fat: 12,
-          },
-        ],
-        imageUrl: "",
-      };
-    }
+    // 2️⃣ Scale to requested quantity
+    const factor = quantity / 100;
+
+    const scaleNutrition = (item) => ({
+      calories: +(item.calories * factor).toFixed(1),
+      protein: +(item.protein * factor).toFixed(1),
+      carbs: +(item.carbs * factor).toFixed(1),
+      fat: +(item.fat * factor).toFixed(1),
+    });
+
+    result.total = scaleNutrition(result.total);
+    result.ingredients = result.ingredients.map(scaleNutrition);
+
+    // 3️⃣ Optionally override imageUrl using your own fetchImageForRecipe()
+    const imageUrl = await fetchImageForRecipe(recipeName);
+    result.imageUrl = imageUrl || result.imageUrl || "";
 
     return res.status(200).json(result);
   } catch (error) {
