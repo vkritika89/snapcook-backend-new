@@ -205,5 +205,122 @@ app.post("/ocr", upload.single("photo"), async (req, res) => {
   }
 });
 
+app.post("/nutrition", async (req, res) => {
+  try {
+    const apiKey = process.env.OPENAI_API_KEY;
+    const { recipeName, quantity } = req.body;
+    const prompt = `You are a nutrition expert. Analyze if "${recipeName}" is a valid food item or recipe name.
+
+IMPORTANT RULES:
+1. If the input is NOT a real food item, recipe, or edible item (like random letters, gibberish, non-food words, or nonsense), return:
+{
+  "total": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0 },
+  "ingredients": [],
+  "imageUrl": ""
+}
+
+2. If it IS a real food/recipe, provide detailed nutritional breakdown for ${quantity}g portion:
+{
+  "total": { "calories": X, "protein": X, "carbs": X, "fat": X },
+  "ingredients": [
+    { "name": "ingredient1", "calories": X, "protein": X, "carbs": X, "fat": X },
+    { "name": "ingredient2", "calories": X, "protein": X, "carbs": X, "fat": X }
+  ],
+}
+
+3. Always return valid JSON only, no explanations.
+4. All values should be numbers (not strings).
+5. For recipes, break down into 3-8 key ingredients with their individual macros.
+6. Ensure ingredient macros sum approximately to total macros.
+7. Include a realistic food image URL that shows the actual recipe/food item.
+8. For imageUrl: perform a Google Images style search for the recipe name (e.g., "<recipe name> recipe"). Return ONE DIRECT, hotlinkable image URL (jpg/jpeg/png/webp) to the actual image file. Do NOT return an HTML page, search results, or Google redirect links (avoid urls containing "imgres", "google.com/search"). Prefer images hosted on reputable food sites (e.g., allrecipes.com, seriouseats.com, bbcgoodfood.com) or reliable CDNs (e.g., wp.com, cloudfront.net, gstatic.com) with at least 400x300 resolution. The image must clearly depict the requested food.
+9. If no suitable image is found, set imageUrl to an empty string.`;
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 500,
+        temperature: 0.1,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log("OpenAI raw response:", JSON.stringify(data, null, 2));
+
+    let result;
+    try {
+      const text = data?.choices?.[0]?.message?.content?.trim();
+      if (!text) throw new Error("OpenAI response did not contain text");
+
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("No JSON found in OpenAI response");
+
+      result = JSON.parse(jsonMatch[0]);
+      console.log("OpenAI response:", result);
+      console.log("Image URL received:", result.imageUrl);
+
+      // Save the image URL to cache if it exists
+      const imageUrl = await fetchImageForRecipe(recipeName);
+      //return { ...json, imageUrl };
+      console.log("Image URL received1111:", imageUrl);
+      // if (imageUrl && recipeName) {
+      //   await saveRecipeImage(recipeName, imageUrl);
+      // }
+      result.imageUrl = imageUrl;
+    } catch (e) {
+      console.error("Parse error:", e);
+      return {
+        total: { calories: 300, protein: 20, carbs: 15, fat: 12 },
+        ingredients: [
+          {
+            name: recipeName,
+            calories: 300,
+            protein: 20,
+            carbs: 15,
+            fat: 12,
+          },
+        ],
+      };
+    }
+
+    return result;
+  } catch (error) {
+    console.error("OpenAI API error:", error);
+    throw error;
+  }
+});
+
+const fetchImageForRecipe = async (recipeName) => {
+  const res = await fetch(
+    `https://api.unsplash.com/search/photos?query=${encodeURIComponent(
+      recipeName
+    )}%20food&per_page=1`,
+    {
+      headers: {
+        Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY}`,
+      },
+    }
+  );
+
+  if (!res.ok) {
+    console.error("Unsplash error:", res.status);
+    return "";
+  }
+
+  const data = await res.json();
+  const image = data.results?.[0]?.urls?.regular; // ✅ usable in RN
+  return image ?? "";
+};
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
