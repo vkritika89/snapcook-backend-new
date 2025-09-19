@@ -209,6 +209,7 @@ app.post("/nutrition", async (req, res) => {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
     const { recipeName, quantity } = req.body;
+
     const prompt = `You are a nutrition expert. Analyze if "${recipeName}" is a valid food item or recipe name.
 
 IMPORTANT RULES:
@@ -225,16 +226,18 @@ IMPORTANT RULES:
   "ingredients": [
     { "name": "ingredient1", "calories": X, "protein": X, "carbs": X, "fat": X },
     { "name": "ingredient2", "calories": X, "protein": X, "carbs": X, "fat": X }
-  ],
+  ]
 }
 
-3. Always return valid JSON only, no explanations.
-4. All values should be numbers (not strings).
-5. For recipes, break down into 3-8 key ingredients with their individual macros.
-6. Ensure ingredient macros sum approximately to total macros.
-7. Include a realistic food image URL that shows the actual recipe/food item.
-8. For imageUrl: perform a Google Images style search for the recipe name (e.g., "<recipe name> recipe"). Return ONE DIRECT, hotlinkable image URL (jpg/jpeg/png/webp) to the actual image file. Do NOT return an HTML page, search results, or Google redirect links (avoid urls containing "imgres", "google.com/search"). Prefer images hosted on reputable food sites (e.g., allrecipes.com, seriouseats.com, bbcgoodfood.com) or reliable CDNs (e.g., wp.com, cloudfront.net, gstatic.com) with at least 400x300 resolution. The image must clearly depict the requested food.
-9. If no suitable image is found, set imageUrl to an empty string.`;
+3. IMPORTANT: Always scale all ingredient and total macros exactly to a ${quantity}g portion. Do NOT use default serving sizes or whole item counts.
+
+4. Always return valid JSON only, no explanations.
+5. All values should be numbers (not strings).
+6. For recipes, break down into 3-8 key ingredients with their individual macros.
+7. Ensure ingredient macros sum approximately to total macros.
+8. Include a realistic food image URL that shows the actual recipe/food item.
+9. For imageUrl: perform a Google Images style search for the recipe name (e.g., "<recipe name> recipe"). Return ONE DIRECT, hotlinkable image URL (jpg/jpeg/png/webp) to the actual image file. Do NOT return an HTML page, search results, or Google redirect links (avoid urls containing "imgres", "google.com/search"). Prefer images hosted on reputable food sites (e.g., allrecipes.com, seriouseats.com, bbcgoodfood.com) or reliable CDNs (e.g., wp.com, cloudfront.net, gstatic.com) with at least 400x300 resolution. The image must clearly depict the requested food.
+10. If no suitable image is found, set imageUrl to an empty string.`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -267,19 +270,13 @@ IMPORTANT RULES:
 
       result = JSON.parse(jsonMatch[0]);
       console.log("OpenAI response:", result);
-      console.log("Image URL received:", result.imageUrl);
 
-      // Save the image URL to cache if it exists
+      // Optional: override image using your own fetchImageForRecipe()
       const imageUrl = await fetchImageForRecipe(recipeName);
-      //return { ...json, imageUrl };
-      console.log("Image URL received1111:", imageUrl);
-      // if (imageUrl && recipeName) {
-      //   await saveRecipeImage(recipeName, imageUrl);
-      // }
-      result.imageUrl = imageUrl;
+      result.imageUrl = imageUrl || result.imageUrl || "";
     } catch (e) {
       console.error("Parse error:", e);
-      return {
+      result = {
         total: { calories: 300, protein: 20, carbs: 15, fat: 12 },
         ingredients: [
           {
@@ -290,13 +287,14 @@ IMPORTANT RULES:
             fat: 12,
           },
         ],
+        imageUrl: "",
       };
     }
 
     return res.status(200).json(result);
   } catch (error) {
     console.error("OpenAI API error:", error);
-    throw error;
+    return res.status(500).json({ error: "Failed to process nutrition data" });
   }
 });
 
