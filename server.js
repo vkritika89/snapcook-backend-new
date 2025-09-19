@@ -293,7 +293,7 @@ IMPORTANT RULES:
       };
     }
 
-    return result;
+    return res.status(200).json(result);
   } catch (error) {
     console.error("OpenAI API error:", error);
     throw error;
