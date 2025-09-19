@@ -220,7 +220,11 @@ IMPORTANT RULES:
   "imageUrl": ""
 }
 
-2. If it IS a real food/recipe, provide detailed nutritional breakdown for ${quantity}g portion:
+2. If it IS a real food/recipe, follow these steps:
+   - First, estimate the nutritional values of the food for a standard 100g portion.
+   - Then scale those values exactly by (${quantity} / 100) to get the final output for ${quantity}g.
+
+3. Output the final result like this:
 {
   "total": { "calories": X, "protein": X, "carbs": X, "fat": X },
   "ingredients": [
@@ -229,15 +233,13 @@ IMPORTANT RULES:
   ]
 }
 
-3. IMPORTANT: Always scale all ingredient and total macros exactly to a ${quantity}g portion. Do NOT use default serving sizes or whole item counts.
+4. Always ensure all ingredient macros sum approximately to total macros.
 
-4. Always return valid JSON only, no explanations.
-5. All values should be numbers (not strings).
-6. For recipes, break down into 3-8 key ingredients with their individual macros.
-7. Ensure ingredient macros sum approximately to total macros.
-8. Include a realistic food image URL that shows the actual recipe/food item.
-9. For imageUrl: perform a Google Images style search for the recipe name (e.g., "<recipe name> recipe"). Return ONE DIRECT, hotlinkable image URL (jpg/jpeg/png/webp) to the actual image file. Do NOT return an HTML page, search results, or Google redirect links (avoid urls containing "imgres", "google.com/search"). Prefer images hosted on reputable food sites (e.g., allrecipes.com, seriouseats.com, bbcgoodfood.com) or reliable CDNs (e.g., wp.com, cloudfront.net, gstatic.com) with at least 400x300 resolution. The image must clearly depict the requested food.
-10. If no suitable image is found, set imageUrl to an empty string.`;
+5. Always return valid JSON only, no explanations. All values must be numbers (not strings).
+
+6. Include a realistic food image URL that shows the actual recipe/food item.
+7. For imageUrl: perform a Google Images style search for the recipe name (e.g., "<recipe name> recipe"). Return ONE DIRECT, hotlinkable image URL (jpg/jpeg/png/webp) to the actual image file. Do NOT return an HTML page, search results, or Google redirect links (avoid urls containing "imgres", "google.com/search"). Prefer images hosted on reputable food sites (e.g., allrecipes.com, seriouseats.com, bbcgoodfood.com) or reliable CDNs (e.g., wp.com, cloudfront.net, gstatic.com) with at least 400x300 resolution. The image must clearly depict the requested food.
+8. If no suitable image is found, set imageUrl to an empty string.`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
