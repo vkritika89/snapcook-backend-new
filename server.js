@@ -131,7 +131,7 @@ Rules:
     ],
     temperature: 0,
     text: {
-      format: "json", // <--- NEW REQUIRED FIELD
+      format: { type: "json" },
     },
   });
 
