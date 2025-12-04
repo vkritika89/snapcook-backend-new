@@ -51,94 +51,94 @@ if (!GEMINI_API_KEY) {
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-// export async function processWithLLM(inputText) {
-//   const systemPrompt = `You are a helpful assistant that extracts recipe information from given text if present and returns only valid JSON with the following structure:
-// {
-//   "title": string,
-//   "ingredients": string[],
-//   "instructions": string[],
-//   "influencer": string (optional),
-//   "nutritional_info": {
-//     "total_calories": string,
-//     "protein": string,
-//     "carbs": string,
-//     "fat": string
-//   },
-//   "cooking_time": string (optional),
-//   "serving_size": string (optional)
-// }
-
-// Rules:
-// - Always return only JSON.
-// - If any field is not present, leave it empty ("" or empty object/array).
-// - Each instruction step should be a complete detailed sentence.
-// - Estimate total_calories, protein, carbs, and fat based on the ingredients and their mentioned quantities.
-// - Return approximate values for the entire recipe (not per 100g).
-// `;
-
-//   const userPrompt = `Text: ${inputText}`;
-
-//   const response = await openai.chat.completions.create({
-//     model: "gpt-4o-mini",
-//     messages: [
-//       { role: "system", content: systemPrompt },
-//       { role: "user", content: userPrompt },
-//     ],
-//     temperature: 0,
-//     response_format: { type: "json_object" },
-//   });
-
-//   const content = response.choices[0].message.content;
-
-//   return JSON.parse(content);
-// }
-
 export async function processWithLLM(inputText) {
-  const systemPrompt = `
-You are a helpful assistant that extracts recipe information from given text if present and returns only valid JSON with the following strict structure:
-
+  const systemPrompt = `You are a helpful assistant that extracts recipe information from given text if present and returns only valid JSON with the following structure:
 {
-  "title": "",
-  "ingredients": [],
-  "instructions": [],
-  "influencer": "",
+  "title": string,
+  "ingredients": string[],
+  "instructions": string[],
+  "influencer": string (optional),
   "nutritional_info": {
-    "total_calories": "",
-    "protein": "",
-    "carbs": "",
-    "fat": ""
+    "total_calories": string,
+    "protein": string,
+    "carbs": string,
+    "fat": string
   },
-  "cooking_time": "",
-  "serving_size": ""
+  "cooking_time": string (optional),
+  "serving_size": string (optional)
 }
 
 Rules:
-- Always return ONLY valid JSON.
-- Never include explanations.
-- If a field is missing, return an empty string or empty array.
-- Each instruction step must be a clear, complete sentence.
-- Estimate total recipe calories + macros based on mentioned ingredients.
-- Never include trailing commas.
+- Always return only JSON.
+- If any field is not present, leave it empty ("" or empty object/array).
+- Each instruction step should be a complete detailed sentence.
+- Estimate total_calories, protein, carbs, and fat based on the ingredients and their mentioned quantities.
+- Return approximate values for the entire recipe (not per 100g).
 `;
 
   const userPrompt = `Text: ${inputText}`;
 
-  const response = await client.responses.create({
-    model: "gpt-5.1-mini",
-    input: [
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
     temperature: 0,
-    text: {
-      format: { type: "json" },
-    },
+    response_format: { type: "json_object" },
   });
 
-  const jsonText = response.output_text;
+  const content = response.choices[0].message.content;
 
-  return JSON.parse(jsonText);
+  return JSON.parse(content);
 }
+
+// export async function processWithLLM(inputText) {
+//   const systemPrompt = `
+// You are a helpful assistant that extracts recipe information from given text if present and returns only valid JSON with the following strict structure:
+
+// {
+//   "title": "",
+//   "ingredients": [],
+//   "instructions": [],
+//   "influencer": "",
+//   "nutritional_info": {
+//     "total_calories": "",
+//     "protein": "",
+//     "carbs": "",
+//     "fat": ""
+//   },
+//   "cooking_time": "",
+//   "serving_size": ""
+// }
+
+// Rules:
+// - Always return ONLY valid JSON.
+// - Never include explanations.
+// - If a field is missing, return an empty string or empty array.
+// - Each instruction step must be a clear, complete sentence.
+// - Estimate total recipe calories + macros based on mentioned ingredients.
+// - Never include trailing commas.
+// `;
+
+//   const userPrompt = `Text: ${inputText}`;
+
+//   const response = await client.responses.create({
+//     model: "gpt-5.1-mini",
+//     input: [
+//       { role: "system", content: systemPrompt },
+//       { role: "user", content: userPrompt },
+//     ],
+//     temperature: 0,
+//     text: {
+//       format: { type: "json" },
+//     },
+//   });
+
+//   const jsonText = response.output_text;
+
+//   return JSON.parse(jsonText);
+// }
 
 async function getInstagramCaptionAndThumbnail(url) {
   const browser = await puppeteer.launch({
