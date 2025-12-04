@@ -130,10 +130,12 @@ Rules:
       { role: "user", content: userPrompt },
     ],
     temperature: 0,
-    response_format: { type: "json_object" },
+    text: {
+      format: "json", // <--- NEW REQUIRED FIELD
+    },
   });
 
-  const jsonText = response.output[0].content[0].text;
+  const jsonText = response.output_text;
 
   return JSON.parse(jsonText);
 }
