@@ -24,6 +24,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 const upload = multer({ dest: "uploads/" });
+const client = new OpenAI();
 
 // Health check endpoint
 app.get("/", (req, res) => {
