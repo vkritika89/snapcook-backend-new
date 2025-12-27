@@ -8,6 +8,7 @@ import OpenAI from "openai";
 import dotenv from "dotenv";
 import path from "path";
 import axios from "axios";
+import { ApifyClient } from "apify-client";
 import {
   GoogleGenerativeAI,
   HarmBlockThreshold,
@@ -15,6 +16,10 @@ import {
 } from "@google/generative-ai";
 
 dotenv.config();
+
+const apifyClient = new ApifyClient({
+  token: process.env.APIFY_TOKEN,
+});
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY, // set your key in .env
@@ -189,6 +194,42 @@ async function getYouTubeDescriptionAndThumbnail(url) {
   return { caption, thumbnail };
 }
 
+// app.post("/url-extract", async (req, res) => {
+//   const { url } = req.body;
+//   if (!url) return res.status(400).json({ error: "URL is required" });
+
+//   try {
+//     let captionText = "";
+//     let thumbnail = "";
+
+//     if (url.includes("instagram.com")) {
+//       const result = await getInstagramCaptionAndThumbnail(url);
+//       captionText = result.caption;
+//       thumbnail = result.thumbnail;
+//     } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
+//       const result = await getYouTubeDescriptionAndThumbnail(url);
+//       captionText = result.caption;
+//       thumbnail = result.thumbnail;
+//     }
+
+//     if (!captionText)
+//       return res.status(404).json({ error: "No caption found" });
+
+//     const structured = await processWithLLM(captionText);
+
+//     if (structured && typeof structured === "object") {
+//       structured.image = thumbnail;
+//     }
+
+//     res.status(200).json({ structured, thumbnail });
+//   } catch (error) {
+//     console.error("URL Extraction Error:", error);
+//     res
+//       .status(500)
+//       .json({ error: "Failed to process URL", detail: error.message });
+//   }
+// });
+
 app.post("/url-extract", async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "URL is required" });
@@ -196,15 +237,23 @@ app.post("/url-extract", async (req, res) => {
   try {
     let captionText = "";
     let thumbnail = "";
+    let influencer = "";
 
     if (url.includes("instagram.com")) {
       const result = await getInstagramCaptionAndThumbnail(url);
       captionText = result.caption;
       thumbnail = result.thumbnail;
+      influencer = result.influencer || "";
     } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
       const result = await getYouTubeDescriptionAndThumbnail(url);
       captionText = result.caption;
       thumbnail = result.thumbnail;
+      influencer = result.influencer || "";
+    } else if (url.includes("tiktok.com")) {
+      const result = await getTikTokCaptionAndThumbnail(url);
+      captionText = result.caption;
+      thumbnail = result.thumbnail;
+      influencer = result.influencer || "";
     }
 
     if (!captionText)
@@ -214,6 +263,9 @@ app.post("/url-extract", async (req, res) => {
 
     if (structured && typeof structured === "object") {
       structured.image = thumbnail;
+      if (influencer && !structured.influencer) {
+        structured.influencer = influencer;
+      }
     }
 
     res.status(200).json({ structured, thumbnail });
@@ -224,6 +276,129 @@ app.post("/url-extract", async (req, res) => {
       .json({ error: "Failed to process URL", detail: error.message });
   }
 });
+
+// ============ REPLACE YOUR PUPPETEER FUNCTIONS WITH THESE ============
+
+async function getInstagramCaptionAndThumbnail(url) {
+  try {
+    console.log("📸 Extracting Instagram data via Apify...");
+
+    // Run Instagram scraper
+    const run = await apifyClient.actor("apify/instagram-scraper").call({
+      directUrls: [url],
+      resultsType: "posts",
+      resultsLimit: 1,
+    });
+
+    // Get results from dataset
+    const { items } = await apifyClient
+      .dataset(run.defaultDatasetId)
+      .listItems();
+
+    if (items && items.length > 0) {
+      const post = items[0];
+      console.log("✅ Instagram data extracted successfully");
+
+      return {
+        caption: post.caption || "",
+        thumbnail: post.displayUrl || post.thumbnailUrl || "",
+        influencer: post.ownerFullName || post.ownerUsername || "",
+      };
+    }
+
+    return { caption: "", thumbnail: "" };
+  } catch (error) {
+    console.error("❌ Instagram Apify extraction failed:", error.message);
+    return { caption: "", thumbnail: "" };
+  }
+}
+
+async function getYouTubeDescriptionAndThumbnail(url) {
+  try {
+    console.log("📺 Extracting YouTube data via Apify...");
+
+    // Run YouTube scraper
+    const run = await apifyClient.actor("streamers/youtube-scraper").call({
+      startUrls: [{ url }],
+      maxResults: 1,
+      maxResultsShorts: 1,
+    });
+
+    // Get results from dataset
+    const { items } = await apifyClient
+      .dataset(run.defaultDatasetId)
+      .listItems();
+
+    if (items && items.length > 0) {
+      const video = items[0];
+      console.log("✅ YouTube data extracted successfully");
+
+      // Get video ID for thumbnail fallback
+      const videoId = getYouTubeId(url);
+      const fallbackThumbnail = videoId
+        ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+        : "";
+
+      return {
+        caption: video.description || video.text || "",
+        thumbnail: video.thumbnailUrl || fallbackThumbnail,
+        influencer: video.channelName || video.channelTitle || "",
+      };
+    }
+
+    // Fallback to thumbnail from video ID
+    const videoId = getYouTubeId(url);
+    return {
+      caption: "",
+      thumbnail: videoId
+        ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+        : "",
+    };
+  } catch (error) {
+    console.error("❌ YouTube Apify extraction failed:", error.message);
+    const videoId = getYouTubeId(url);
+    return {
+      caption: "",
+      thumbnail: videoId
+        ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+        : "",
+    };
+  }
+}
+
+// NEW: Add TikTok support
+async function getTikTokCaptionAndThumbnail(url) {
+  try {
+    console.log("🎵 Extracting TikTok data via Apify...");
+
+    // Run TikTok scraper
+    const run = await apifyClient.actor("clockworks/tiktok-scraper").call({
+      postURLs: [url],
+      resultsPerPage: 1,
+    });
+
+    // Get results from dataset
+    const { items } = await apifyClient
+      .dataset(run.defaultDatasetId)
+      .listItems();
+
+    if (items && items.length > 0) {
+      const video = items[0];
+      console.log("✅ TikTok data extracted successfully");
+
+      return {
+        caption: video.text || "",
+        thumbnail: video.covers?.default || video.videoMeta?.coverUrl || "",
+        influencer: video.authorMeta?.name || video.authorMeta?.nickName || "",
+      };
+    }
+
+    return { caption: "", thumbnail: "" };
+  } catch (error) {
+    console.error("❌ TikTok Apify extraction failed:", error.message);
+    return { caption: "", thumbnail: "" };
+  }
+}
 
 app.post("/ocr", upload.single("photo"), async (req, res) => {
   try {
