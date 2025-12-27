@@ -145,25 +145,25 @@ Rules:
 //   return JSON.parse(jsonText);
 // }
 
-async function getInstagramCaptionAndThumbnail(url) {
-  const browser = await puppeteer.launch({
-    headless: "new",
-    args: ["--no-sandbox"],
-  });
-  const page = await browser.newPage();
-  await page.goto(url, { waitUntil: "networkidle2", timeout: 0 });
+// async function getInstagramCaptionAndThumbnail(url) {
+//   const browser = await puppeteer.launch({
+//     headless: "new",
+//     args: ["--no-sandbox"],
+//   });
+//   const page = await browser.newPage();
+//   await page.goto(url, { waitUntil: "networkidle2", timeout: 0 });
 
-  const caption = await page.$eval(
-    "meta[property='og:description']",
-    (el) => el.content
-  );
-  const thumbnail = await page.$eval(
-    "meta[property='og:image']",
-    (el) => el.content
-  );
-  await browser.close();
-  return { caption, thumbnail };
-}
+//   const caption = await page.$eval(
+//     "meta[property='og:description']",
+//     (el) => el.content
+//   );
+//   const thumbnail = await page.$eval(
+//     "meta[property='og:image']",
+//     (el) => el.content
+//   );
+//   await browser.close();
+//   return { caption, thumbnail };
+// }
 
 function getYouTubeId(url) {
   const match = url.match(
@@ -172,27 +172,27 @@ function getYouTubeId(url) {
   return match ? match[1] : null;
 }
 
-async function getYouTubeDescriptionAndThumbnail(url) {
-  const browser = await puppeteer.launch({
-    headless: "new",
-    args: ["--no-sandbox"],
-  });
-  const page = await browser.newPage();
-  await page.goto(url, { waitUntil: "networkidle2", timeout: 0 });
+// async function getYouTubeDescriptionAndThumbnail(url) {
+//   const browser = await puppeteer.launch({
+//     headless: "new",
+//     args: ["--no-sandbox"],
+//   });
+//   const page = await browser.newPage();
+//   await page.goto(url, { waitUntil: "networkidle2", timeout: 0 });
 
-  const caption = await page.$eval(
-    "meta[name='description']",
-    (el) => el.content
-  );
-  await browser.close();
+//   const caption = await page.$eval(
+//     "meta[name='description']",
+//     (el) => el.content
+//   );
+//   await browser.close();
 
-  const videoId = getYouTubeId(url);
-  const thumbnail = videoId
-    ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
-    : null;
+//   const videoId = getYouTubeId(url);
+//   const thumbnail = videoId
+//     ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+//     : null;
 
-  return { caption, thumbnail };
-}
+//   return { caption, thumbnail };
+// }
 
 // app.post("/url-extract", async (req, res) => {
 //   const { url } = req.body;
