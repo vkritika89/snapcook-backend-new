@@ -56,47 +56,47 @@ if (!GEMINI_API_KEY) {
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-export async function processWithLLM(inputText) {
-  const systemPrompt = `You are a helpful assistant that extracts recipe information from given text if present and returns only valid JSON with the following structure:
-{
-  "title": string,
-  "ingredients": string[],
-  "instructions": string[],
-  "influencer": string (optional),
-  "nutritional_info": {
-    "total_calories": string,
-    "protein": string,
-    "carbs": string,
-    "fat": string
-  },
-  "cooking_time": string (optional),
-  "serving_size": string (optional)
-}
+// export async function processWithLLM(inputText) {
+//   const systemPrompt = `You are a helpful assistant that extracts recipe information from given text if present and returns only valid JSON with the following structure:
+// {
+//   "title": string,
+//   "ingredients": string[],
+//   "instructions": string[],
+//   "influencer": string (optional),
+//   "nutritional_info": {
+//     "total_calories": string,
+//     "protein": string,
+//     "carbs": string,
+//     "fat": string
+//   },
+//   "cooking_time": string (optional),
+//   "serving_size": string (optional)
+// }
 
-Rules:
-- Always return only JSON.
-- If any field is not present, leave it empty ("" or empty object/array).
-- Each instruction step should be a complete detailed sentence.
-- Estimate total_calories, protein, carbs, and fat based on the ingredients and their mentioned quantities.
-- Return approximate values for the entire recipe (not per 100g).
-`;
+// Rules:
+// - Always return only JSON.
+// - If any field is not present, leave it empty ("" or empty object/array).
+// - Each instruction step should be a complete detailed sentence.
+// - Estimate total_calories, protein, carbs, and fat based on the ingredients and their mentioned quantities.
+// - Return approximate values for the entire recipe (not per 100g).
+// `;
 
-  const userPrompt = `Text: ${inputText}`;
+//   const userPrompt = `Text: ${inputText}`;
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    temperature: 0,
-    response_format: { type: "json_object" },
-  });
+//   const response = await openai.chat.completions.create({
+//     model: "gpt-4o-mini",
+//     messages: [
+//       { role: "system", content: systemPrompt },
+//       { role: "user", content: userPrompt },
+//     ],
+//     temperature: 0,
+//     response_format: { type: "json_object" },
+//   });
 
-  const content = response.choices[0].message.content;
+//   const content = response.choices[0].message.content;
 
-  return JSON.parse(content);
-}
+//   return JSON.parse(content);
+// }
 
 // export async function processWithLLM(inputText) {
 //   const systemPrompt = `
@@ -165,6 +165,62 @@ Rules:
 //   return { caption, thumbnail };
 // }
 
+export async function processWithLLM(inputText, language = "en") {
+  // Map language codes to full names for better LLM understanding
+  const languageMap = {
+    en: "English",
+    fr: "French",
+    de: "German",
+    pt: "Portuguese",
+    es: "Spanish",
+  };
+
+  const languageName = languageMap[language] || "English";
+
+  const systemPrompt = `You are a helpful assistant that extracts recipe information from given text if present and returns only valid JSON with the following structure. IMPORTANT: All text in the response (title, ingredients, instructions, etc.) must be in ${languageName} language.
+
+{
+  "title": string,
+  "ingredients": string[],
+  "instructions": string[],
+  "influencer": string (optional),
+  "nutritional_info": {
+    "total_calories": string,
+    "protein": string,
+    "carbs": string,
+    "fat": string
+  },
+  "cooking_time": string (optional),
+  "serving_size": string (optional)
+}
+
+Rules:
+- Always return only JSON.
+- All text content (title, ingredients, instructions) must be in ${languageName}.
+- If any field is not present, leave it empty ("" or empty object/array).
+- Each instruction step should be a complete detailed sentence in ${languageName}.
+- Estimate total_calories, protein, carbs, and fat based on the ingredients and their mentioned quantities.
+- Return approximate values for the entire recipe (not per 100g).
+- Nutritional values can remain as numbers (they don't need translation).
+`;
+
+  const userPrompt = `Text: ${inputText}`;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    temperature: 0,
+    response_format: { type: "json_object" },
+  });
+
+  const content = response.choices[0].message.content;
+
+  return JSON.parse(content);
+}
+
 function getYouTubeId(url) {
   const match = url.match(
     /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([\w-]{11})/
@@ -231,7 +287,7 @@ function getYouTubeId(url) {
 // });
 
 app.post("/url-extract", async (req, res) => {
-  const { url } = req.body;
+  const { url, language = "en" } = req.body;
   if (!url) return res.status(400).json({ error: "URL is required" });
 
   try {
@@ -259,7 +315,7 @@ app.post("/url-extract", async (req, res) => {
     if (!captionText)
       return res.status(404).json({ error: "No caption found" });
 
-    const structured = await processWithLLM(captionText);
+    const structured = await processWithLLM(captionText, language);
 
     if (structured && typeof structured === "object") {
       structured.image = thumbnail;
@@ -400,12 +456,41 @@ async function getTikTokCaptionAndThumbnail(url) {
   }
 }
 
+// app.post("/ocr", upload.single("photo"), async (req, res) => {
+//   try {
+//     if (!req.file) return res.status(400).json({ error: "No file received" });
+//     console.log("File received:", req.file);
+
+//     const imagePath = req.file.path;
+
+//     const {
+//       data: { text },
+//     } = await Tesseract.recognize(imagePath, "eng");
+
+//     fs.unlinkSync(imagePath);
+
+//     if (!text || text.trim() === "") {
+//       return res.status(200).json({ extracted: "⚠️ No text found in image" });
+//     }
+//     console.log("Extracted text " + text);
+
+//     const structured = await processWithLLM(text);
+//     res.status(200).json({ parsed: text, structured });
+//   } catch (err) {
+//     console.error("OCR error:", err.message);
+//     res
+//       .status(500)
+//       .json({ error: "OCR processing failed", detail: err.message });
+//   }
+// });
+
 app.post("/ocr", upload.single("photo"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file received" });
     console.log("File received:", req.file);
 
     const imagePath = req.file.path;
+    const language = req.body.language || "en"; // Extract language from form data
 
     const {
       data: { text },
@@ -418,7 +503,7 @@ app.post("/ocr", upload.single("photo"), async (req, res) => {
     }
     console.log("Extracted text " + text);
 
-    const structured = await processWithLLM(text);
+    const structured = await processWithLLM(text, language); // Pass language here
     res.status(200).json({ parsed: text, structured });
   } catch (err) {
     console.error("OCR error:", err.message);
@@ -431,7 +516,7 @@ app.post("/ocr", upload.single("photo"), async (req, res) => {
 app.post("/nutrition", async (req, res) => {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
-    const { recipeName, quantity } = req.body;
+    const { recipeName, quantity, language = "en" } = req.body;
 
     if (!recipeName || !quantity) {
       return res
@@ -440,28 +525,39 @@ app.post("/nutrition", async (req, res) => {
     }
 
     // 1️⃣ Ask OpenAI for 100g portion only
-    const prompt = `You are a nutrition expert. Analyze if "${recipeName}" is a valid food item or recipe name.
+    const languageMap = {
+      en: "English",
+      fr: "French",
+      de: "German",
+      pt: "Portuguese",
+      es: "Spanish",
+    };
 
-IMPORTANT RULES:
-1. If the input is NOT a real food item, recipe, or edible item, return:
-{
-  "total": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0 },
-  "ingredients": [],
-  "imageUrl": ""
-}
+    const languageName = languageMap[language] || "English";
 
-2. If it IS a real food/recipe, give nutritional breakdown for exactly 100g portion only:
-
-{
-  "total": { "calories": X, "protein": X, "carbs": X, "fat": X },
-  "ingredients": [
-    { "name": "ingredient1", "calories": X, "protein": X, "carbs": X, "fat": X },
-    { "name": "ingredient2", "calories": X, "protein": X, "carbs": X, "fat": X }
-  ]
-}
-
-3. Return valid JSON only. All values must be numbers (not strings).
-4. Include a realistic imageUrl if available. Otherwise, set it to an empty string.`;
+    const prompt = `You are a nutrition expert. Analyze if "${recipeName}" is a valid food item or recipe name. IMPORTANT: All text in your response (ingredient names, etc.) must be in ${languageName} language.
+    
+    IMPORTANT RULES:
+    1. If the input is NOT a real food item, recipe, or edible item, return:
+    {
+      "total": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0 },
+      "ingredients": [],
+      "imageUrl": ""
+    }
+    
+    2. If it IS a real food/recipe, give nutritional breakdown for exactly 100g portion only. All ingredient names must be in ${languageName}:
+    
+    {
+      "total": { "calories": X, "protein": X, "carbs": X, "fat": X },
+      "ingredients": [
+        { "name": "ingredient1", "calories": X, "protein": X, "carbs": X, "fat": X },
+        { "name": "ingredient2", "calories": X, "protein": X, "carbs": X, "fat": X }
+      ]
+    }
+    
+    3. Return valid JSON only. All values must be numbers (not strings).
+    4. Include a realistic imageUrl if available. Otherwise, set it to an empty string.
+    5. All ingredient names in the "ingredients" array must be in ${languageName} language.`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
