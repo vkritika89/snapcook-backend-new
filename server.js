@@ -504,7 +504,7 @@ app.post("/ocr", upload.single("photo"), async (req, res) => {
 
     const {
       data: { text },
-    } = await Tesseract.recognize(imagePath, tesseractLanguageMap);
+    } = await Tesseract.recognize(imagePath, tesseractLang);
 
     fs.unlinkSync(imagePath);
 
