@@ -492,9 +492,19 @@ app.post("/ocr", upload.single("photo"), async (req, res) => {
     const imagePath = req.file.path;
     const language = req.body.language || "en"; // Extract language from form data
 
+    const tesseractLanguageMap = {
+      en: "eng",
+      es: "spa",
+      fr: "fra",
+      de: "deu",
+      pt: "por",
+    };
+
+    const tesseractLang = tesseractLanguageMap[language] || "eng";
+
     const {
       data: { text },
-    } = await Tesseract.recognize(imagePath, "eng");
+    } = await Tesseract.recognize(imagePath, tesseractLanguageMap);
 
     fs.unlinkSync(imagePath);
 
