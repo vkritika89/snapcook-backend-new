@@ -167,6 +167,8 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 export async function processWithLLM(inputText, language = "en") {
   // Map language codes to full names for better LLM understanding
+
+  console.log("input text", inputText);
   const languageMap = {
     en: "English",
     fr: "French",
@@ -238,7 +240,6 @@ FINAL RULES:
 - No extra text outside JSON.
 `;
 
-
   const userPrompt = `Text: ${inputText}`;
 
   const response = await openai.chat.completions.create({
@@ -252,6 +253,7 @@ FINAL RULES:
   });
 
   const content = response.choices[0].message.content;
+  console.log("content", content);
 
   return JSON.parse(content);
 }
