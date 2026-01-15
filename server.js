@@ -177,32 +177,67 @@ export async function processWithLLM(inputText, language = "en") {
 
   const languageName = languageMap[language] || "English";
 
-  const systemPrompt = `You are a helpful assistant that extracts recipe information from given text if present and returns only valid JSON with the following structure. IMPORTANT: All text in the response (title, ingredients, instructions, etc.) must be in ${languageName} language.
+  const systemPrompt = `You are a strict information extraction assistant.
 
+Your PRIMARY job is to extract ONLY the recipe information that is EXPLICITLY present in the given text.
+DO NOT add, infer, assume, or guess any ingredients or instructions based on the recipe name, cuisine, or your prior knowledge.
+
+IMPORTANT LANGUAGE RULE:
+- All text in the response (title, ingredients, instructions, etc.) MUST be in ${languageName}.
+
+OUTPUT FORMAT (return ONLY valid JSON):
 {
   "title": string,
   "ingredients": string[],
   "instructions": string[],
-  "influencer": string (optional),
+  "instructions_generated_by_ai": boolean,
+  "influencer": string,
   "nutritional_info": {
     "total_calories": string,
     "protein": string,
     "carbs": string,
     "fat": string
   },
-  "cooking_time": string (optional),
-  "serving_size": string (optional)
+  "cooking_time": string,
+  "serving_size": string
 }
 
-Rules:
-- Always return only JSON.
-- All text content (title, ingredients, instructions) must be in ${languageName}.
-- If any field is not present, leave it empty ("" or empty object/array).
-- Each instruction step should be a complete detailed sentence in ${languageName}.
-- Estimate total_calories, protein, carbs, and fat based on the ingredients and their mentioned quantities.
-- Return approximate values for the entire recipe (not per 100g).
-- Nutritional values can remain as numbers (they don't need translation).
+STRICT EXTRACTION RULES:
+- Extract ONLY ingredients that are explicitly mentioned in the text.
+- Extract ONLY instruction steps that are explicitly mentioned in the text.
+- Do NOT reconstruct a recipe from the title.
+- Do NOT add missing steps or ingredients unless explicitly allowed below.
+- If an ingredient quantity is not mentioned, keep it as written without guessing.
+- If something is unclear, leave it out.
+
+INSTRUCTION GENERATION RULE (VERY IMPORTANT):
+- If ONE OR MORE instruction steps are present in the text → 
+  • Return ONLY those steps.
+  • Set "instructions_generated_by_ai" to false.
+- If NO instructions are present at all →
+  • You MAY generate reasonable cooking instructions based ONLY on the extracted ingredients.
+  • Clearly write complete steps.
+  • Set "instructions_generated_by_ai" to true.
+
+NUTRITION RULES:
+- Estimate nutritional values ONLY using the extracted ingredients.
+- If ingredients list is empty, return empty strings for all nutritional fields.
+- Values are for the entire recipe (not per serving).
+- Do NOT add ingredients for nutritional estimation.
+
+EMPTY FIELD RULE:
+- If a field is missing, return:
+  • "" for strings
+  • [] for arrays
+  • {} for objects
+
+FINAL RULES:
+- Return ONLY valid JSON.
+- No explanations.
+- No markdown.
+- No extra text outside JSON.
 `;
+
 
   const userPrompt = `Text: ${inputText}`;
 
