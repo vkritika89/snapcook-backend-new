@@ -600,6 +600,9 @@ app.post("/nutrition/audio", upload.single("audio"), async (req, res) => {
     if (!req.file)
       return res.status(400).json({ error: "audio file is required" });
 
+    filePath = req.file.path + ".m4a";
+    fs.renameSync(req.file.path, filePath);
+
     // Step 1: Transcribe with Whisper
     const transcription = await openai.audio.transcriptions.create({
       file: fs.createReadStream(req.file.path),
