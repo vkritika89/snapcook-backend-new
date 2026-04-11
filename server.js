@@ -50,7 +50,7 @@ console.log("🔍 GEMINI_API_KEY:", GEMINI_API_KEY ? "SET" : "NOT SET");
 if (!GEMINI_API_KEY) {
   console.error("❌ Missing GEMINI_API_KEY in environment variables");
   console.error(
-    "💡 Please set GEMINI_API_KEY in Railway environment variables"
+    "💡 Please set GEMINI_API_KEY in Railway environment variables",
   );
 }
 
@@ -223,7 +223,7 @@ export async function processWithLLM(inputText, language = "en") {
 
 function getYouTubeId(url) {
   const match = url.match(
-    /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([\w-]{11})/
+    /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([\w-]{11})/,
   );
   return match ? match[1] : null;
 }
@@ -523,6 +523,131 @@ app.post("/ocr", upload.single("photo"), async (req, res) => {
   }
 });
 
+// ============ VOICE-FIRST MACRO CALCULATION ============
+
+const MACRO_PROMPT = `You are a nutrition expert AI assistant. The user will describe what they ate.
+
+Your job:
+1. Identify each food item and its portion
+2. Calculate accurate calories (kcal) and macronutrients (protein, carbs, fat in grams)
+3. Return ONLY valid JSON (no markdown, no code fences)
+
+Response format:
+{
+  "items": [
+    {
+      "name": "Chole Bhature",
+      "quantity": "1 plate",
+      "weight_grams": 300,
+      "calories": 450,
+      "protein": 12,
+      "carbs": 55,
+      "fat": 20
+    }
+  ],
+  "total": {
+    "calories": 450,
+    "protein": 12,
+    "carbs": 55,
+    "fat": 20
+  },
+  "summary": "A brief friendly one-line summary of the analysis"
+}
+
+Rules:
+- If user mentions multiple items, list each separately in "items" and sum them in "total"
+- All macro values in grams (calories in kcal)
+- "weight_grams" is REQUIRED and MUST be a number - the estimated weight in grams (e.g. 1 plate of biryani = 350, 1 glass of lassi = 250, 1 glass of milk = 200, 1 roti = 40, 1 egg = 50)
+- If user says "200ml of milk", weight_grams should be 200
+- Use realistic nutritional values based on standard serving sizes
+- If user does NOT specify a quantity, assume 1 standard serving and estimate weight_grams accordingly
+- calories, protein, carbs, fat should be the TOTAL macros for the specified weight_grams amount
+- "a plate", "a bowl", "a glass", "a piece" — estimate standard Indian/international portions
+- "quantity" should be human-readable (e.g. "1 plate", "2 pieces", "1 bowl")
+- The user may speak in ANY language (Hindi, Tamil, Kannada, Telugu, Marathi, Spanish, French, German, etc.) — understand the food items regardless of language and return item names in English
+- If the input is not food-related or unclear, return: {"error": "I couldn't identify any food items. Could you describe what you ate?"}
+- ONLY return valid JSON, no markdown, no extra text`;
+
+// Text-based macro calculation
+app.post("/nutrition/text", async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) return res.status(400).json({ error: "text is required" });
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: MACRO_PROMPT },
+        { role: "user", content: `I ate: ${text}` },
+      ],
+      temperature: 0.3,
+      response_format: { type: "json_object" },
+    });
+
+    const content = response.choices[0].message.content;
+    if (!content) return res.status(500).json({ error: "Empty AI response" });
+
+    return res.status(200).json(JSON.parse(content));
+  } catch (error) {
+    console.error("Nutrition text error:", error);
+    return res.status(500).json({ error: "Failed to process nutrition data" });
+  }
+});
+
+// Audio-based macro calculation (Whisper + GPT)
+app.post("/nutrition/audio", upload.single("audio"), async (req, res) => {
+  try {
+    if (!req.file)
+      return res.status(400).json({ error: "audio file is required" });
+
+    // Step 1: Transcribe with Whisper
+    const transcription = await openai.audio.transcriptions.create({
+      file: fs.createReadStream(req.file.path),
+      model: "whisper-1",
+    });
+
+    // Clean up uploaded file
+    fs.unlinkSync(req.file.path);
+
+    if (!transcription.text || transcription.text.trim().length === 0) {
+      return res.status(200).json({
+        items: [],
+        total: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+        summary: "",
+        error: "Could not understand the audio. Please try again.",
+      });
+    }
+
+    console.log("Whisper transcription:", transcription.text);
+
+    // Step 2: Calculate macros with GPT
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: MACRO_PROMPT },
+        { role: "user", content: `I ate: ${transcription.text}` },
+      ],
+      temperature: 0.3,
+      response_format: { type: "json_object" },
+    });
+
+    const content = response.choices[0].message.content;
+    if (!content) return res.status(500).json({ error: "Empty AI response" });
+
+    const result = JSON.parse(content);
+    result.transcription = transcription.text;
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("Nutrition audio error:", error);
+    if (req.file?.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (e) {}
+    }
+    return res.status(500).json({ error: "Failed to process audio" });
+  }
+});
+
 app.post("/nutrition", async (req, res) => {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -624,13 +749,13 @@ app.post("/nutrition", async (req, res) => {
 const fetchImageForRecipe = async (recipeName) => {
   const res = await fetch(
     `https://api.unsplash.com/search/photos?query=${encodeURIComponent(
-      recipeName
+      recipeName,
     )}%20food&per_page=1`,
     {
       headers: {
         Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY}`,
       },
-    }
+    },
   );
 
   if (!res.ok) {
