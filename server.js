@@ -31,6 +31,10 @@ app.use(express.json());
 const upload = multer({ dest: "uploads/" });
 const client = new OpenAI();
 
+if (!fs.existsSync("uploads")) {
+  fs.mkdirSync("uploads");
+}
+
 // Health check endpoint
 app.get("/", (req, res) => {
   res.json({
