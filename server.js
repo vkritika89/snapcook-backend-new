@@ -596,6 +596,7 @@ app.post("/nutrition/text", async (req, res) => {
 
 // Audio-based macro calculation (Whisper + GPT)
 app.post("/nutrition/audio", upload.single("audio"), async (req, res) => {
+  let filePath = null;
   try {
     if (!req.file)
       return res.status(400).json({ error: "audio file is required" });
