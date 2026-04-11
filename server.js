@@ -6,6 +6,7 @@ import Tesseract from "tesseract.js";
 import puppeteer from "puppeteer";
 import OpenAI from "openai";
 import dotenv from "dotenv";
+import os from "os";
 import path from "path";
 import axios from "axios";
 import { ApifyClient } from "apify-client";
@@ -16,6 +17,8 @@ import {
 } from "@google/generative-ai";
 
 dotenv.config();
+
+const memUpload = multer({ storage: multer.memoryStorage() });
 
 const apifyClient = new ApifyClient({
   token: process.env.APIFY_TOKEN,
@@ -599,24 +602,78 @@ app.post("/nutrition/text", async (req, res) => {
 });
 
 // Audio-based macro calculation (Whisper + GPT)
-app.post("/nutrition/audio", upload.single("audio"), async (req, res) => {
-  let filePath = null;
+// app.post("/nutrition/audio", upload.single("audio"), async (req, res) => {
+//   let filePath = null;
+//   try {
+//     if (!req.file)
+//       return res.status(400).json({ error: "audio file is required" });
+
+//     filePath = req.file.path + ".m4a";
+//     fs.renameSync(req.file.path, filePath);
+
+//     // Step 1: Transcribe with Whisper
+//     const transcription = await openai.audio.transcriptions.create({
+//       file: fs.createReadStream(req.file.path),
+//       model: "whisper-1",
+//     });
+
+//     // Clean up uploaded file
+//     fs.unlinkSync(req.file.path);
+
+//     if (!transcription.text || transcription.text.trim().length === 0) {
+//       return res.status(200).json({
+//         items: [],
+//         total: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+//         summary: "",
+//         error: "Could not understand the audio. Please try again.",
+//       });
+//     }
+
+//     console.log("Whisper transcription:", transcription.text);
+
+//     // Step 2: Calculate macros with GPT
+//     const response = await openai.chat.completions.create({
+//       model: "gpt-4o-mini",
+//       messages: [
+//         { role: "system", content: MACRO_PROMPT },
+//         { role: "user", content: `I ate: ${transcription.text}` },
+//       ],
+//       temperature: 0.3,
+//       response_format: { type: "json_object" },
+//     });
+
+//     const content = response.choices[0].message.content;
+//     if (!content) return res.status(500).json({ error: "Empty AI response" });
+
+//     const result = JSON.parse(content);
+//     result.transcription = transcription.text;
+//     return res.status(200).json(result);
+//   } catch (error) {
+//     console.error("Nutrition audio error:", error);
+//     if (req.file?.path) {
+//       try {
+//         fs.unlinkSync(req.file.path);
+//       } catch (e) {}
+//     }
+//     return res.status(500).json({ error: "Failed to process audio" });
+//   }
+// });
+
+app.post("/nutrition/audio", memUpload.single("audio"), async (req, res) => {
+  let tempPath = null;
   try {
     if (!req.file)
       return res.status(400).json({ error: "audio file is required" });
-
-    filePath = req.file.path + ".m4a";
-    fs.renameSync(req.file.path, filePath);
-
+    // Write buffer to temp file with .m4a extension
+    tempPath = path.join(os.tmpdir(), `${Date.now()}.m4a`);
+    fs.writeFileSync(tempPath, req.file.buffer);
     // Step 1: Transcribe with Whisper
     const transcription = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(req.file.path),
+      file: fs.createReadStream(tempPath),
       model: "whisper-1",
     });
-
-    // Clean up uploaded file
-    fs.unlinkSync(req.file.path);
-
+    fs.unlinkSync(tempPath);
+    tempPath = null;
     if (!transcription.text || transcription.text.trim().length === 0) {
       return res.status(200).json({
         items: [],
@@ -625,9 +682,7 @@ app.post("/nutrition/audio", upload.single("audio"), async (req, res) => {
         error: "Could not understand the audio. Please try again.",
       });
     }
-
     console.log("Whisper transcription:", transcription.text);
-
     // Step 2: Calculate macros with GPT
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -638,18 +693,16 @@ app.post("/nutrition/audio", upload.single("audio"), async (req, res) => {
       temperature: 0.3,
       response_format: { type: "json_object" },
     });
-
     const content = response.choices[0].message.content;
     if (!content) return res.status(500).json({ error: "Empty AI response" });
-
     const result = JSON.parse(content);
     result.transcription = transcription.text;
     return res.status(200).json(result);
   } catch (error) {
     console.error("Nutrition audio error:", error);
-    if (req.file?.path) {
+    if (tempPath) {
       try {
-        fs.unlinkSync(req.file.path);
+        fs.unlinkSync(tempPath);
       } catch (e) {}
     }
     return res.status(500).json({ error: "Failed to process audio" });
