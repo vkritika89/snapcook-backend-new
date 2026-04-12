@@ -532,63 +532,63 @@ app.post("/ocr", upload.single("photo"), async (req, res) => {
 
 // ============ FOOD IMAGE SEARCH (TheMealDB → Pexels → Unsplash) ============
 
-async function fetchFoodImage(foodName) {
-  try {
-    // 1. Try TheMealDB (free, no key needed)
-    const mealDbRes = await fetch(
-      `https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(foodName)}`,
-    );
-    if (mealDbRes.ok) {
-      const mealDbData = await mealDbRes.json();
-      if (mealDbData.meals && mealDbData.meals.length > 0) {
-        const img = mealDbData.meals[0].strMealThumb;
-        if (img) {
-          console.log(`✅ TheMealDB image found for: ${foodName}`);
-          return img;
-        }
-      }
-    }
-  } catch (e) {
-    console.log(`TheMealDB failed for ${foodName}:`, e.message);
-  }
+// async function fetchFoodImage(foodName) {
+//   try {
+//     // 1. Try TheMealDB (free, no key needed)
+//     const mealDbRes = await fetch(
+//       `https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(foodName)}`,
+//     );
+//     if (mealDbRes.ok) {
+//       const mealDbData = await mealDbRes.json();
+//       if (mealDbData.meals && mealDbData.meals.length > 0) {
+//         const img = mealDbData.meals[0].strMealThumb;
+//         if (img) {
+//           console.log(`✅ TheMealDB image found for: ${foodName}`);
+//           return img;
+//         }
+//       }
+//     }
+//   } catch (e) {
+//     console.log(`TheMealDB failed for ${foodName}:`, e.message);
+//   }
 
-  try {
-    // 2. Try Pexels (free, needs API key)
-    const pexelsKey = process.env.PEXELS_API_KEY;
-    if (pexelsKey) {
-      const pexelsRes = await fetch(
-        `https://api.pexels.com/v1/search?query=${encodeURIComponent(foodName)}+food&per_page=1&orientation=landscape`,
-        { headers: { Authorization: pexelsKey } },
-      );
-      if (pexelsRes.ok) {
-        const pexelsData = await pexelsRes.json();
-        if (pexelsData.photos && pexelsData.photos.length > 0) {
-          const img = pexelsData.photos[0].src.medium;
-          if (img) {
-            console.log(`✅ Pexels image found for: ${foodName}`);
-            return img;
-          }
-        }
-      }
-    }
-  } catch (e) {
-    console.log(`Pexels failed for ${foodName}:`, e.message);
-  }
+//   try {
+//     // 2. Try Pexels (free, needs API key)
+//     const pexelsKey = process.env.PEXELS_API_KEY;
+//     if (pexelsKey) {
+//       const pexelsRes = await fetch(
+//         `https://api.pexels.com/v1/search?query=${encodeURIComponent(foodName)}+food&per_page=1&orientation=landscape`,
+//         { headers: { Authorization: pexelsKey } },
+//       );
+//       if (pexelsRes.ok) {
+//         const pexelsData = await pexelsRes.json();
+//         if (pexelsData.photos && pexelsData.photos.length > 0) {
+//           const img = pexelsData.photos[0].src.medium;
+//           if (img) {
+//             console.log(`✅ Pexels image found for: ${foodName}`);
+//             return img;
+//           }
+//         }
+//       }
+//     }
+//   } catch (e) {
+//     console.log(`Pexels failed for ${foodName}:`, e.message);
+//   }
 
-  try {
-    // 3. Fallback to Unsplash (already configured)
-    const img = await fetchImageForRecipe(foodName);
-    if (img) {
-      console.log(`✅ Unsplash image found for: ${foodName}`);
-      return img;
-    }
-  } catch (e) {
-    console.log(`Unsplash failed for ${foodName}:`, e.message);
-  }
+//   try {
+//     // 3. Fallback to Unsplash (already configured)
+//     const img = await fetchImageForRecipe(foodName);
+//     if (img) {
+//       console.log(`✅ Unsplash image found for: ${foodName}`);
+//       return img;
+//     }
+//   } catch (e) {
+//     console.log(`Unsplash failed for ${foodName}:`, e.message);
+//   }
 
-  console.log(`❌ No image found for: ${foodName}`);
-  return "";
-}
+//   console.log(`❌ No image found for: ${foodName}`);
+//   return "";
+// }
 
 // ============ VOICE-FIRST MACRO CALCULATION ============
 
@@ -657,15 +657,15 @@ app.post("/nutrition/text", async (req, res) => {
     const result = JSON.parse(content);
 
     // Fetch images for each item in parallel
-    if (result.items && result.items.length > 0) {
-      const imagePromises = result.items.map((item) =>
-        fetchFoodImage(item.name),
-      );
-      const images = await Promise.all(imagePromises);
-      result.items.forEach((item, idx) => {
-        item.imageUrl = images[idx] || "";
-      });
-    }
+    // if (result.items && result.items.length > 0) {
+    //   const imagePromises = result.items.map((item) =>
+    //     fetchFoodImage(item.name),
+    //   );
+    //   const images = await Promise.all(imagePromises);
+    //   result.items.forEach((item, idx) => {
+    //     item.imageUrl = images[idx] || "";
+    //   });
+    // }
 
     return res.status(200).json(result);
   } catch (error) {
@@ -777,15 +777,15 @@ app.post("/nutrition/audio", memUpload.single("audio"), async (req, res) => {
     result.transcription = transcription.text;
 
     // Fetch images for each item in parallel
-    if (result.items && result.items.length > 0) {
-      const imagePromises = result.items.map((item) =>
-        fetchFoodImage(item.name),
-      );
-      const images = await Promise.all(imagePromises);
-      result.items.forEach((item, idx) => {
-        item.imageUrl = images[idx] || "";
-      });
-    }
+    // if (result.items && result.items.length > 0) {
+    //   const imagePromises = result.items.map((item) =>
+    //     fetchFoodImage(item.name),
+    //   );
+    //   const images = await Promise.all(imagePromises);
+    //   result.items.forEach((item, idx) => {
+    //     item.imageUrl = images[idx] || "";
+    //   });
+    // }
 
     return res.status(200).json(result);
   } catch (error) {
