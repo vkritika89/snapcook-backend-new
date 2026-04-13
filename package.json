@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@supabase/supabase-js": "^2.103.0",
     "apify-client": "^2.21.0",
     "axios": "^1.10.0",
     "body-parser": "^2.2.0",
