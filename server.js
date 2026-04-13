@@ -16,6 +16,12 @@ import {
   HarmCategory,
 } from "@google/generative-ai";
 
+import { createClient } from "@supabase/supabase-js";
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+);
+
 dotenv.config();
 
 const memUpload = multer({ storage: multer.memoryStorage() });
@@ -293,8 +299,55 @@ function getYouTubeId(url) {
 //   }
 // });
 
+// app.post("/url-extract", async (req, res) => {
+//   const { url, language = "en" } = req.body;
+//   if (!url) return res.status(400).json({ error: "URL is required" });
+
+//   try {
+//     let captionText = "";
+//     let thumbnail = "";
+//     let influencer = "";
+
+//     if (url.includes("instagram.com")) {
+//       const result = await getInstagramCaptionAndThumbnail(url);
+//       captionText = result.caption;
+//       thumbnail = result.thumbnail;
+//       influencer = result.influencer || "";
+//     } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
+//       const result = await getYouTubeDescriptionAndThumbnail(url);
+//       captionText = result.caption;
+//       thumbnail = result.thumbnail;
+//       influencer = result.influencer || "";
+//     } else if (url.includes("tiktok.com")) {
+//       const result = await getTikTokCaptionAndThumbnail(url);
+//       captionText = result.caption;
+//       thumbnail = result.thumbnail;
+//       influencer = result.influencer || "";
+//     }
+
+//     if (!captionText)
+//       return res.status(404).json({ error: "No caption found" });
+
+//     const structured = await processWithLLM(captionText, language);
+
+//     if (structured && typeof structured === "object") {
+//       structured.image = thumbnail;
+//       if (influencer && !structured.influencer) {
+//         structured.influencer = influencer;
+//       }
+//     }
+
+//     res.status(200).json({ structured, thumbnail });
+//   } catch (error) {
+//     console.error("URL Extraction Error:", error);
+//     res
+//       .status(500)
+//       .json({ error: "Failed to process URL", detail: error.message });
+//   }
+// });
+
 app.post("/url-extract", async (req, res) => {
-  const { url, language = "en" } = req.body;
+  const { url, language = "en", device_id, user_id } = req.body;
   if (!url) return res.status(400).json({ error: "URL is required" });
 
   try {
@@ -328,6 +381,22 @@ app.post("/url-extract", async (req, res) => {
       structured.image = thumbnail;
       if (influencer && !structured.influencer) {
         structured.influencer = influencer;
+      }
+    }
+
+    // Persist to Supabase so the app can pick it up even if it was closed
+    if (structured && device_id) {
+      try {
+        await supabaseAdmin.from("pending_imports").insert({
+          device_id,
+          user_id: user_id || null,
+          recipe_data: structured,
+          url,
+          status: "completed",
+        });
+        console.log("✅ Saved pending import for device:", device_id);
+      } catch (e) {
+        console.error("Failed to save pending import:", e.message);
       }
     }
 
