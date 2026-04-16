@@ -24,12 +24,6 @@ const supabaseAdmin = createClient(
 
 import { fileURLToPath } from "url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Serve static landing page
-app.use(express.static(path.join(__dirname, "public")));
-
 dotenv.config();
 
 const memUpload = multer({ storage: multer.memoryStorage() });
@@ -47,6 +41,12 @@ app.use(cors());
 app.use(express.json());
 const upload = multer({ dest: "uploads/" });
 const client = new OpenAI();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve static landing page
+app.use(express.static(path.join(__dirname, "public")));
 
 if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
