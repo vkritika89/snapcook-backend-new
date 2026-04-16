@@ -22,6 +22,15 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY,
 );
 
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve static landing page
+app.use(express.static(path.join(__dirname, "public")));
+
 dotenv.config();
 
 const memUpload = multer({ storage: multer.memoryStorage() });
