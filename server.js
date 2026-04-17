@@ -423,14 +423,13 @@ async function getInstagramCaptionAndThumbnail(url) {
   try {
     console.log("📸 Extracting Instagram data via Apify...");
 
-    // Run Instagram scraper
     const run = await apifyClient.actor("apify/instagram-scraper").call({
       directUrls: [url],
       resultsType: "posts",
       resultsLimit: 1,
+      addParentData: true,
     });
 
-    // Get results from dataset
     const { items } = await apifyClient
       .dataset(run.defaultDatasetId)
       .listItems();
@@ -439,10 +438,28 @@ async function getInstagramCaptionAndThumbnail(url) {
       const post = items[0];
       console.log("✅ Instagram data extracted successfully");
 
+      let caption = post.caption || "";
+      const ownerUsername = post.ownerUsername || "";
+
+      const comments = post.latestComments || post.comments || [];
+      const pinnedOrOwnerComment = comments.find(
+        (c) =>
+          c.isPinned ||
+          c.ownerUsername === ownerUsername ||
+          c.owner?.username === ownerUsername
+      );
+      if (pinnedOrOwnerComment) {
+        const commentText = pinnedOrOwnerComment.text || pinnedOrOwnerComment.body || "";
+        if (commentText) {
+          console.log("📌 Found pinned/owner comment, appending to caption");
+          caption += "\n\n[Pinned Comment]:\n" + commentText;
+        }
+      }
+
       return {
-        caption: post.caption || "",
+        caption,
         thumbnail: post.displayUrl || post.thumbnailUrl || "",
-        influencer: post.ownerFullName || post.ownerUsername || "",
+        influencer: post.ownerFullName || ownerUsername,
       };
     }
 
@@ -457,14 +474,14 @@ async function getYouTubeDescriptionAndThumbnail(url) {
   try {
     console.log("📺 Extracting YouTube data via Apify...");
 
-    // Run YouTube scraper
     const run = await apifyClient.actor("streamers/youtube-scraper").call({
       startUrls: [{ url }],
       maxResults: 1,
       maxResultsShorts: 1,
+      scrapeComments: true,
+      maxComments: 5,
     });
 
-    // Get results from dataset
     const { items } = await apifyClient
       .dataset(run.defaultDatasetId)
       .listItems();
@@ -473,20 +490,37 @@ async function getYouTubeDescriptionAndThumbnail(url) {
       const video = items[0];
       console.log("✅ YouTube data extracted successfully");
 
-      // Get video ID for thumbnail fallback
       const videoId = getYouTubeId(url);
       const fallbackThumbnail = videoId
         ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
         : "";
 
+      let caption = video.description || video.text || "";
+      const channelName = video.channelName || video.channelTitle || "";
+
+      const comments = video.comments || video.commentsList || [];
+      const pinnedOrCreatorComment = comments.find(
+        (c) =>
+          c.isPinned ||
+          c.pinnedBy ||
+          c.authorChannelName === channelName ||
+          c.author === channelName
+      );
+      if (pinnedOrCreatorComment) {
+        const commentText = pinnedOrCreatorComment.text || pinnedOrCreatorComment.content || "";
+        if (commentText) {
+          console.log("📌 Found pinned/creator comment, appending to description");
+          caption += "\n\n[Pinned Comment]:\n" + commentText;
+        }
+      }
+
       return {
-        caption: video.description || video.text || "",
+        caption,
         thumbnail: video.thumbnailUrl || fallbackThumbnail,
-        influencer: video.channelName || video.channelTitle || "",
+        influencer: channelName,
       };
     }
 
-    // Fallback to thumbnail from video ID
     const videoId = getYouTubeId(url);
     return {
       caption: "",
@@ -506,18 +540,17 @@ async function getYouTubeDescriptionAndThumbnail(url) {
   }
 }
 
-// NEW: Add TikTok support
 async function getTikTokCaptionAndThumbnail(url) {
   try {
     console.log("🎵 Extracting TikTok data via Apify...");
 
-    // Run TikTok scraper
     const run = await apifyClient.actor("clockworks/tiktok-scraper").call({
       postURLs: [url],
       resultsPerPage: 1,
+      shouldDownloadComments: true,
+      maxComments: 5,
     });
 
-    // Get results from dataset
     const { items } = await apifyClient
       .dataset(run.defaultDatasetId)
       .listItems();
@@ -526,8 +559,27 @@ async function getTikTokCaptionAndThumbnail(url) {
       const video = items[0];
       console.log("✅ TikTok data extracted successfully");
 
+      let caption = video.text || "";
+      const authorUsername = video.authorMeta?.name || "";
+
+      const comments = video.comments || [];
+      const pinnedOrCreatorComment = comments.find(
+        (c) =>
+          c.isPinned ||
+          c.pinned ||
+          c.user?.uniqueId === authorUsername ||
+          c.uniqueId === authorUsername
+      );
+      if (pinnedOrCreatorComment) {
+        const commentText = pinnedOrCreatorComment.text || pinnedOrCreatorComment.comment || "";
+        if (commentText) {
+          console.log("📌 Found pinned/creator comment, appending to caption");
+          caption += "\n\n[Pinned Comment]:\n" + commentText;
+        }
+      }
+
       return {
-        caption: video.text || "",
+        caption,
         thumbnail: video.covers?.default || video.videoMeta?.coverUrl || "",
         influencer: video.authorMeta?.name || video.authorMeta?.nickName || "",
       };
