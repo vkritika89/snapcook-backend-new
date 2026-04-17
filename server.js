@@ -16,6 +16,7 @@ import {
   HarmCategory,
 } from "@google/generative-ai";
 
+import rateLimit from "express-rate-limit";
 import { createClient } from "@supabase/supabase-js";
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL,
@@ -51,6 +52,19 @@ app.use(express.static(path.join(__dirname, "public")));
 if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
+
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.body?.device_id || req.body?.user_id || req.ip,
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: "Too many requests. Please wait a minute before trying again.",
+    });
+  },
+});
 
 // Health check endpoint
 app.get("/", (req, res) => {
@@ -354,7 +368,7 @@ function getYouTubeId(url) {
 //   }
 // });
 
-app.post("/url-extract", async (req, res) => {
+app.post("/url-extract", apiLimiter, async (req, res) => {
   const { url, language = "en", device_id, user_id } = req.body;
   if (!url) return res.status(400).json({ error: "URL is required" });
 
@@ -620,7 +634,7 @@ async function getTikTokCaptionAndThumbnail(url) {
 //   }
 // });
 
-app.post("/ocr", upload.single("photo"), async (req, res) => {
+app.post("/ocr", apiLimiter, upload.single("photo"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file received" });
     console.log("File received:", req.file);
@@ -765,7 +779,7 @@ Rules:
 - ONLY return valid JSON, no markdown, no extra text`;
 
 // Text-based macro calculation
-app.post("/nutrition/text", async (req, res) => {
+app.post("/nutrition/text", apiLimiter, async (req, res) => {
   try {
     const { text } = req.body;
     if (!text) return res.status(400).json({ error: "text is required" });
@@ -861,7 +875,7 @@ app.post("/nutrition/text", async (req, res) => {
 //   }
 // });
 
-app.post("/nutrition/audio", memUpload.single("audio"), async (req, res) => {
+app.post("/nutrition/audio", apiLimiter, memUpload.single("audio"), async (req, res) => {
   let tempPath = null;
   try {
     if (!req.file)
@@ -928,7 +942,7 @@ app.post("/nutrition/audio", memUpload.single("audio"), async (req, res) => {
   }
 });
 
-app.post("/nutrition", async (req, res) => {
+app.post("/nutrition", apiLimiter, async (req, res) => {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
     const { recipeName, quantity, language = "en" } = req.body;
