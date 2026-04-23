@@ -368,8 +368,71 @@ function getYouTubeId(url) {
 //   }
 // });
 
+// app.post("/url-extract", apiLimiter, async (req, res) => {
+//   const { url, language = "en", device_id, user_id } = req.body;
+//   if (!url) return res.status(400).json({ error: "URL is required" });
+
+//   try {
+//     let captionText = "";
+//     let thumbnail = "";
+//     let influencer = "";
+
+//     if (url.includes("instagram.com")) {
+//       const result = await getInstagramCaptionAndThumbnail(url);
+//       captionText = result.caption;
+//       thumbnail = result.thumbnail;
+//       influencer = result.influencer || "";
+//     } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
+//       const result = await getYouTubeDescriptionAndThumbnail(url);
+//       captionText = result.caption;
+//       thumbnail = result.thumbnail;
+//       influencer = result.influencer || "";
+//     } else if (url.includes("tiktok.com")) {
+//       const result = await getTikTokCaptionAndThumbnail(url);
+//       captionText = result.caption;
+//       thumbnail = result.thumbnail;
+//       influencer = result.influencer || "";
+//     }
+
+//     if (!captionText)
+//       return res.status(404).json({ error: "No caption found" });
+
+//     const structured = await processWithLLM(captionText, language);
+
+//     if (structured && typeof structured === "object") {
+//       structured.image = thumbnail;
+//       if (influencer && !structured.influencer) {
+//         structured.influencer = influencer;
+//       }
+//     }
+
+//     // Persist to Supabase so the app can pick it up even if it was closed
+//     if (structured && device_id) {
+//       try {
+//         await supabaseAdmin.from("pending_imports").insert({
+//           device_id,
+//           user_id: user_id || null,
+//           recipe_data: structured,
+//           url,
+//           status: "completed",
+//         });
+//         console.log("✅ Saved pending import for device:", device_id);
+//       } catch (e) {
+//         console.error("Failed to save pending import:", e.message);
+//       }
+//     }
+
+//     res.status(200).json({ structured, thumbnail });
+//   } catch (error) {
+//     console.error("URL Extraction Error:", error);
+//     res
+//       .status(500)
+//       .json({ error: "Failed to process URL", detail: error.message });
+//   }
+// });
+
 app.post("/url-extract", apiLimiter, async (req, res) => {
-  const { url, language = "en", device_id, user_id } = req.body;
+  const { url, language = "en", device_id, user_id, push_token } = req.body;
   if (!url) return res.status(400).json({ error: "URL is required" });
 
   try {
@@ -420,6 +483,31 @@ app.post("/url-extract", apiLimiter, async (req, res) => {
       } catch (e) {
         console.error("Failed to save pending import:", e.message);
       }
+
+      // Send push notification so user knows even if app is closed
+      if (push_token) {
+        try {
+          await fetch("https://exp.host/--/api/v2/push/send", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              to: push_token,
+              title: "Recipe Imported! 🎉",
+              body: structured.title
+                ? `"${structured.title}" is ready to view`
+                : "Your recipe has been extracted. Tap to view.",
+              data: { type: "recipe_imported" },
+              sound: "default",
+            }),
+          });
+          console.log("✅ Push notification sent to:", push_token);
+        } catch (e) {
+          console.error("Failed to send push notification:", e.message);
+        }
+      }
     }
 
     res.status(200).json({ structured, thumbnail });
@@ -460,10 +548,11 @@ async function getInstagramCaptionAndThumbnail(url) {
         (c) =>
           c.isPinned ||
           c.ownerUsername === ownerUsername ||
-          c.owner?.username === ownerUsername
+          c.owner?.username === ownerUsername,
       );
       if (pinnedOrOwnerComment) {
-        const commentText = pinnedOrOwnerComment.text || pinnedOrOwnerComment.body || "";
+        const commentText =
+          pinnedOrOwnerComment.text || pinnedOrOwnerComment.body || "";
         if (commentText) {
           console.log("📌 Found pinned/owner comment, appending to caption");
           caption += "\n\n[Pinned Comment]:\n" + commentText;
@@ -518,12 +607,15 @@ async function getYouTubeDescriptionAndThumbnail(url) {
           c.isPinned ||
           c.pinnedBy ||
           c.authorChannelName === channelName ||
-          c.author === channelName
+          c.author === channelName,
       );
       if (pinnedOrCreatorComment) {
-        const commentText = pinnedOrCreatorComment.text || pinnedOrCreatorComment.content || "";
+        const commentText =
+          pinnedOrCreatorComment.text || pinnedOrCreatorComment.content || "";
         if (commentText) {
-          console.log("📌 Found pinned/creator comment, appending to description");
+          console.log(
+            "📌 Found pinned/creator comment, appending to description",
+          );
           caption += "\n\n[Pinned Comment]:\n" + commentText;
         }
       }
@@ -582,10 +674,11 @@ async function getTikTokCaptionAndThumbnail(url) {
           c.isPinned ||
           c.pinned ||
           c.user?.uniqueId === authorUsername ||
-          c.uniqueId === authorUsername
+          c.uniqueId === authorUsername,
       );
       if (pinnedOrCreatorComment) {
-        const commentText = pinnedOrCreatorComment.text || pinnedOrCreatorComment.comment || "";
+        const commentText =
+          pinnedOrCreatorComment.text || pinnedOrCreatorComment.comment || "";
         if (commentText) {
           console.log("📌 Found pinned/creator comment, appending to caption");
           caption += "\n\n[Pinned Comment]:\n" + commentText;
@@ -875,72 +968,77 @@ app.post("/nutrition/text", apiLimiter, async (req, res) => {
 //   }
 // });
 
-app.post("/nutrition/audio", apiLimiter, memUpload.single("audio"), async (req, res) => {
-  let tempPath = null;
-  try {
-    if (!req.file)
-      return res.status(400).json({ error: "audio file is required" });
+app.post(
+  "/nutrition/audio",
+  apiLimiter,
+  memUpload.single("audio"),
+  async (req, res) => {
+    let tempPath = null;
+    try {
+      if (!req.file)
+        return res.status(400).json({ error: "audio file is required" });
 
-    tempPath = path.join(os.tmpdir(), `${Date.now()}.m4a`);
-    fs.writeFileSync(tempPath, req.file.buffer);
+      tempPath = path.join(os.tmpdir(), `${Date.now()}.m4a`);
+      fs.writeFileSync(tempPath, req.file.buffer);
 
-    const transcription = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(tempPath),
-      model: "whisper-1",
-    });
-
-    fs.unlinkSync(tempPath);
-    tempPath = null;
-
-    if (!transcription.text || transcription.text.trim().length === 0) {
-      return res.status(200).json({
-        items: [],
-        total: { calories: 0, protein: 0, carbs: 0, fat: 0 },
-        summary: "",
-        error: "Could not understand the audio. Please try again.",
+      const transcription = await openai.audio.transcriptions.create({
+        file: fs.createReadStream(tempPath),
+        model: "whisper-1",
       });
-    }
 
-    console.log("Whisper transcription:", transcription.text);
+      fs.unlinkSync(tempPath);
+      tempPath = null;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: MACRO_PROMPT },
-        { role: "user", content: `I ate: ${transcription.text}` },
-      ],
-      temperature: 0.3,
-      response_format: { type: "json_object" },
-    });
+      if (!transcription.text || transcription.text.trim().length === 0) {
+        return res.status(200).json({
+          items: [],
+          total: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+          summary: "",
+          error: "Could not understand the audio. Please try again.",
+        });
+      }
 
-    const content = response.choices[0].message.content;
-    if (!content) return res.status(500).json({ error: "Empty AI response" });
+      console.log("Whisper transcription:", transcription.text);
 
-    const result = JSON.parse(content);
-    result.transcription = transcription.text;
-
-    // Fetch images for each item in parallel
-    if (result.items && result.items.length > 0) {
-      const imagePromises = result.items.map((item) =>
-        fetchFoodImage(item.name),
-      );
-      const images = await Promise.all(imagePromises);
-      result.items.forEach((item, idx) => {
-        item.imageUrl = images[idx] || "";
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: MACRO_PROMPT },
+          { role: "user", content: `I ate: ${transcription.text}` },
+        ],
+        temperature: 0.3,
+        response_format: { type: "json_object" },
       });
-    }
 
-    return res.status(200).json(result);
-  } catch (error) {
-    console.error("Nutrition audio error:", error);
-    if (tempPath) {
-      try {
-        fs.unlinkSync(tempPath);
-      } catch (e) {}
+      const content = response.choices[0].message.content;
+      if (!content) return res.status(500).json({ error: "Empty AI response" });
+
+      const result = JSON.parse(content);
+      result.transcription = transcription.text;
+
+      // Fetch images for each item in parallel
+      if (result.items && result.items.length > 0) {
+        const imagePromises = result.items.map((item) =>
+          fetchFoodImage(item.name),
+        );
+        const images = await Promise.all(imagePromises);
+        result.items.forEach((item, idx) => {
+          item.imageUrl = images[idx] || "";
+        });
+      }
+
+      return res.status(200).json(result);
+    } catch (error) {
+      console.error("Nutrition audio error:", error);
+      if (tempPath) {
+        try {
+          fs.unlinkSync(tempPath);
+        } catch (e) {}
+      }
+      return res.status(500).json({ error: "Failed to process audio" });
     }
-    return res.status(500).json({ error: "Failed to process audio" });
-  }
-});
+  },
+);
 
 app.post("/nutrition", apiLimiter, async (req, res) => {
   try {
