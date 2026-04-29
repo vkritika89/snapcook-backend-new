@@ -431,9 +431,117 @@ function getYouTubeId(url) {
 //   }
 // });
 
+// app.post("/url-extract", apiLimiter, async (req, res) => {
+//   const { url, language = "en", device_id, user_id, push_token } = req.body;
+//   if (!url) return res.status(400).json({ error: "URL is required" });
+
+//   try {
+//     let captionText = "";
+//     let thumbnail = "";
+//     let influencer = "";
+
+//     if (url.includes("instagram.com")) {
+//       const result = await getInstagramCaptionAndThumbnail(url);
+//       captionText = result.caption;
+//       thumbnail = result.thumbnail;
+//       influencer = result.influencer || "";
+//     } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
+//       const result = await getYouTubeDescriptionAndThumbnail(url);
+//       captionText = result.caption;
+//       thumbnail = result.thumbnail;
+//       influencer = result.influencer || "";
+//     } else if (url.includes("tiktok.com")) {
+//       const result = await getTikTokCaptionAndThumbnail(url);
+//       captionText = result.caption;
+//       thumbnail = result.thumbnail;
+//       influencer = result.influencer || "";
+//     }
+
+//     if (!captionText)
+//       return res.status(404).json({ error: "No caption found" });
+
+//     const structured = await processWithLLM(captionText, language);
+
+//     if (structured && typeof structured === "object") {
+//       structured.image = thumbnail;
+//       if (influencer && !structured.influencer) {
+//         structured.influencer = influencer;
+//       }
+//     }
+
+//     // Persist to Supabase so the app can pick it up even if it was closed
+//     if (structured && device_id) {
+//       try {
+//         await supabaseAdmin.from("pending_imports").insert({
+//           device_id,
+//           user_id: user_id || null,
+//           recipe_data: structured,
+//           url,
+//           status: "completed",
+//         });
+//         console.log("✅ Saved pending import for device:", device_id);
+//       } catch (e) {
+//         console.error("Failed to save pending import:", e.message);
+//       }
+
+//       // Send push notification so user knows even if app is closed
+//       if (push_token) {
+//         try {
+//           await fetch("https://exp.host/--/api/v2/push/send", {
+//             method: "POST",
+//             headers: {
+//               "Content-Type": "application/json",
+//               Accept: "application/json",
+//             },
+//             body: JSON.stringify({
+//               to: push_token,
+//               title: "Recipe Imported! 🎉",
+//               body: structured.title
+//                 ? `"${structured.title}" is ready to view`
+//                 : "Your recipe has been extracted. Tap to view.",
+//               data: { type: "recipe_imported" },
+//               sound: "default",
+//             }),
+//           });
+//           console.log("✅ Push notification sent to:", push_token);
+//         } catch (e) {
+//           console.error("Failed to send push notification:", e.message);
+//         }
+//       }
+//     }
+
+//     res.status(200).json({ structured, thumbnail });
+//   } catch (error) {
+//     console.error("URL Extraction Error:", error);
+//     res
+//       .status(500)
+//       .json({ error: "Failed to process URL", detail: error.message });
+//   }
+// });
+
 app.post("/url-extract", apiLimiter, async (req, res) => {
   const { url, language = "en", device_id, user_id, push_token } = req.body;
   if (!url) return res.status(400).json({ error: "URL is required" });
+
+  // 1) Pre-flight quota check. Defense-in-depth: the client also checks
+  //    before calling, but Pro/non-Pro is ultimately decided here.
+  try {
+    const quota = await checkQuotaAllowed(device_id, user_id);
+    if (!quota.allowed) {
+      console.log(
+        `🚫 Quota exceeded — device:${device_id} user:${user_id} ${quota.count}/${quota.quotaTotal}`,
+      );
+      return res.status(402).json({
+        error: "QUOTA_EXCEEDED",
+        count: quota.count,
+        quota_total: quota.quotaTotal,
+      });
+    }
+  } catch (qErr) {
+    console.error("Quota check failed:", qErr.message);
+    // Graceful degrade: if the quota service is down, allow the extraction.
+    // Better to over-serve than to block paying customers on a Supabase blip.
+  }
 
   try {
     let captionText = "";
@@ -469,7 +577,7 @@ app.post("/url-extract", apiLimiter, async (req, res) => {
       }
     }
 
-    // Persist to Supabase so the app can pick it up even if it was closed
+    // 2) Persist to Supabase so the app can pick it up even if it was closed
     if (structured && device_id) {
       try {
         await supabaseAdmin.from("pending_imports").insert({
@@ -510,6 +618,30 @@ app.post("/url-extract", apiLimiter, async (req, res) => {
       }
     }
 
+    // 3) Increment quota counter — ONLY when extraction actually succeeded
+    //    (structured is non-null). Failed extractions don't burn quota.
+    if (structured && (device_id || user_id)) {
+      try {
+        const { data: usage, error: usageErr } = await supabaseAdmin.rpc(
+          "increment_extraction_usage",
+          {
+            p_device_id: device_id || null,
+            p_user_id: user_id || null,
+          },
+        );
+        if (usageErr) {
+          console.error("Failed to increment quota:", usageErr.message);
+        } else {
+          const row = Array.isArray(usage) ? usage[0] : usage;
+          console.log(
+            `📊 Quota incremented — device:${device_id} user:${user_id} → ${row?.count}/${row?.quota_total}`,
+          );
+        }
+      } catch (e) {
+        console.error("Increment quota threw:", e.message);
+      }
+    }
+
     res.status(200).json({ structured, thumbnail });
   } catch (error) {
     console.error("URL Extraction Error:", error);
@@ -518,6 +650,38 @@ app.post("/url-extract", apiLimiter, async (req, res) => {
       .json({ error: "Failed to process URL", detail: error.message });
   }
 });
+
+async function checkQuotaAllowed(deviceId, userId) {
+  // No identity provided — graceful pass-through (don't break legacy clients).
+  if (!deviceId && !userId) return { allowed: true };
+
+  // Pro users bypass the quota.
+  if (userId) {
+    const { data: sub } = await supabaseAdmin
+      .from("subscriptions")
+      .select("is_pro")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (sub?.is_pro) return { allowed: true, isPro: true };
+  }
+
+  // Prefer the user's row when signed in; otherwise fall back to the device row.
+  const filter = userId ? { user_id: userId } : { device_id: deviceId };
+  const { data: row } = await supabaseAdmin
+    .from("extraction_usage")
+    .select("count, quota_total")
+    .match(filter)
+    .maybeSingle();
+
+  const count = row?.count ?? 0;
+  const quotaTotal = row?.quota_total ?? 10;
+  return {
+    allowed: count < quotaTotal,
+    count,
+    quotaTotal,
+    remaining: Math.max(0, quotaTotal - count),
+  };
+}
 
 // ============ REPLACE YOUR PUPPETEER FUNCTIONS WITH THESE ============
 
