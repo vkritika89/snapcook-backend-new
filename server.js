@@ -531,11 +531,11 @@ app.post("/url-extract", apiLimiter, async (req, res) => {
       console.log(
         `🚫 Quota exceeded — device:${device_id} user:${user_id} ${quota.count}/${quota.quotaTotal}`,
       );
-      return res.status(402).json({
-        error: "QUOTA_EXCEEDED",
-        count: quota.count,
-        quota_total: quota.quotaTotal,
-      });
+      // return res.status(402).json({
+      //   error: "QUOTA_EXCEEDED",
+      //   count: quota.count,
+      //   quota_total: quota.quotaTotal,
+      // });
     }
   } catch (qErr) {
     console.error("Quota check failed:", qErr.message);
