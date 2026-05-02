@@ -651,6 +651,50 @@ app.post("/url-extract", apiLimiter, async (req, res) => {
   }
 });
 
+async function checkQuotaAllowed(deviceId, userId) {
+  if (!deviceId && !userId) return { allowed: true };
+
+  if (userId) {
+    const { data: sub } = await supabaseAdmin
+      .from("subscriptions")
+      .select("is_pro")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (sub?.is_pro) return { allowed: true, isPro: true };
+  }
+
+  // Single source of truth: the device row.
+  const { data: row } = await supabaseAdmin
+    .from("extraction_usage")
+    .select("count, quota_total, period_start")
+    .eq("device_id", deviceId)
+    .maybeSingle();
+
+  if (!row) return { allowed: true, count: 0, quotaTotal: 10 };
+
+  const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+  const periodStart = row.period_start
+    ? new Date(row.period_start).getTime()
+    : 0;
+  if (periodStart > 0 && Date.now() >= periodStart + WINDOW_MS) {
+    return {
+      allowed: true,
+      count: 0,
+      quotaTotal: row.quota_total ?? 10,
+      windowExpired: true,
+    };
+  }
+
+  const count = row.count ?? 0;
+  const quotaTotal = row.quota_total ?? 10;
+  return {
+    allowed: count < quotaTotal,
+    count,
+    quotaTotal,
+    remaining: Math.max(0, quotaTotal - count),
+  };
+}
+
 // async function checkQuotaAllowed(deviceId, userId) {
 //   // No identity provided — graceful pass-through (don't break legacy clients).
 //   if (!deviceId && !userId) return { allowed: true };
@@ -685,58 +729,58 @@ app.post("/url-extract", apiLimiter, async (req, res) => {
 
 // ============ REPLACE YOUR PUPPETEER FUNCTIONS WITH THESE ============
 
-async function checkQuotaAllowed(deviceId, userId) {
-  // No identity provided — graceful pass-through (don't break legacy clients).
-  if (!deviceId && !userId) return { allowed: true };
+// async function checkQuotaAllowed(deviceId, userId) {
+//   // No identity provided — graceful pass-through (don't break legacy clients).
+//   if (!deviceId && !userId) return { allowed: true };
 
-  // Pro users bypass the quota.
-  if (userId) {
-    const { data: sub } = await supabaseAdmin
-      .from("subscriptions")
-      .select("is_pro")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (sub?.is_pro) return { allowed: true, isPro: true };
-  }
+//   // Pro users bypass the quota.
+//   if (userId) {
+//     const { data: sub } = await supabaseAdmin
+//       .from("subscriptions")
+//       .select("is_pro")
+//       .eq("user_id", userId)
+//       .maybeSingle();
+//     if (sub?.is_pro) return { allowed: true, isPro: true };
+//   }
 
-  // Prefer the user's row when signed in; otherwise fall back to the device row.
-  const filter = userId ? { user_id: userId } : { device_id: deviceId };
-  const { data: row } = await supabaseAdmin
-    .from("extraction_usage")
-    .select("count, quota_total, period_start")
-    .match(filter)
-    .maybeSingle();
+//   // Prefer the user's row when signed in; otherwise fall back to the device row.
+//   const filter = userId ? { user_id: userId } : { device_id: deviceId };
+//   const { data: row } = await supabaseAdmin
+//     .from("extraction_usage")
+//     .select("count, quota_total, period_start")
+//     .match(filter)
+//     .maybeSingle();
 
-  if (!row) return { allowed: true, count: 0, quotaTotal: 10 };
+//   if (!row) return { allowed: true, count: 0, quotaTotal: 10 };
 
-  // Window-expired check — free users get 10 imports per 7-day window,
-  // anchored to period_start. If the window has expired, treat as fresh;
-  // the increment RPC will atomically reset count=1 + period_start=now()
-  // when the next extraction succeeds.
-  const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-  const periodStart = row.period_start
-    ? new Date(row.period_start).getTime()
-    : 0;
-  const windowExpired =
-    periodStart > 0 && Date.now() >= periodStart + WINDOW_MS;
-  if (windowExpired) {
-    return {
-      allowed: true,
-      count: 0,
-      quotaTotal: row.quota_total ?? 10,
-      windowExpired: true,
-    };
-  }
+//   // Window-expired check — free users get 10 imports per 7-day window,
+//   // anchored to period_start. If the window has expired, treat as fresh;
+//   // the increment RPC will atomically reset count=1 + period_start=now()
+//   // when the next extraction succeeds.
+//   const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+//   const periodStart = row.period_start
+//     ? new Date(row.period_start).getTime()
+//     : 0;
+//   const windowExpired =
+//     periodStart > 0 && Date.now() >= periodStart + WINDOW_MS;
+//   if (windowExpired) {
+//     return {
+//       allowed: true,
+//       count: 0,
+//       quotaTotal: row.quota_total ?? 10,
+//       windowExpired: true,
+//     };
+//   }
 
-  const count = row.count ?? 0;
-  const quotaTotal = row.quota_total ?? 10;
-  return {
-    allowed: count < quotaTotal,
-    count,
-    quotaTotal,
-    remaining: Math.max(0, quotaTotal - count),
-  };
-}
+//   const count = row.count ?? 0;
+//   const quotaTotal = row.quota_total ?? 10;
+//   return {
+//     allowed: count < quotaTotal,
+//     count,
+//     quotaTotal,
+//     remaining: Math.max(0, quotaTotal - count),
+//   };
+// }
 
 async function getInstagramCaptionAndThumbnail(url) {
   try {
