@@ -24,6 +24,8 @@ const supabaseAdmin = createClient(
 );
 
 import { fileURLToPath } from "url";
+const REVENUECAT_SECRET_KEY = process.env.REVENUECAT_SECRET_KEY;
+const ENTITLEMENT_ID = "EzyCooking Pro";
 
 dotenv.config();
 
@@ -91,115 +93,6 @@ if (!GEMINI_API_KEY) {
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-// export async function processWithLLM(inputText) {
-//   const systemPrompt = `You are a helpful assistant that extracts recipe information from given text if present and returns only valid JSON with the following structure:
-// {
-//   "title": string,
-//   "ingredients": string[],
-//   "instructions": string[],
-//   "influencer": string (optional),
-//   "nutritional_info": {
-//     "total_calories": string,
-//     "protein": string,
-//     "carbs": string,
-//     "fat": string
-//   },
-//   "cooking_time": string (optional),
-//   "serving_size": string (optional)
-// }
-
-// Rules:
-// - Always return only JSON.
-// - If any field is not present, leave it empty ("" or empty object/array).
-// - Each instruction step should be a complete detailed sentence.
-// - Estimate total_calories, protein, carbs, and fat based on the ingredients and their mentioned quantities.
-// - Return approximate values for the entire recipe (not per 100g).
-// `;
-
-//   const userPrompt = `Text: ${inputText}`;
-
-//   const response = await openai.chat.completions.create({
-//     model: "gpt-4o-mini",
-//     messages: [
-//       { role: "system", content: systemPrompt },
-//       { role: "user", content: userPrompt },
-//     ],
-//     temperature: 0,
-//     response_format: { type: "json_object" },
-//   });
-
-//   const content = response.choices[0].message.content;
-
-//   return JSON.parse(content);
-// }
-
-// export async function processWithLLM(inputText) {
-//   const systemPrompt = `
-// You are a helpful assistant that extracts recipe information from given text if present and returns only valid JSON with the following strict structure:
-
-// {
-//   "title": "",
-//   "ingredients": [],
-//   "instructions": [],
-//   "influencer": "",
-//   "nutritional_info": {
-//     "total_calories": "",
-//     "protein": "",
-//     "carbs": "",
-//     "fat": ""
-//   },
-//   "cooking_time": "",
-//   "serving_size": ""
-// }
-
-// Rules:
-// - Always return ONLY valid JSON.
-// - Never include explanations.
-// - If a field is missing, return an empty string or empty array.
-// - Each instruction step must be a clear, complete sentence.
-// - Estimate total recipe calories + macros based on mentioned ingredients.
-// - Never include trailing commas.
-// `;
-
-//   const userPrompt = `Text: ${inputText}`;
-
-//   const response = await client.responses.create({
-//     model: "gpt-5.1-mini",
-//     input: [
-//       { role: "system", content: systemPrompt },
-//       { role: "user", content: userPrompt },
-//     ],
-//     temperature: 0,
-//     text: {
-//       format: { type: "json" },
-//     },
-//   });
-
-//   const jsonText = response.output_text;
-
-//   return JSON.parse(jsonText);
-// }
-
-// async function getInstagramCaptionAndThumbnail(url) {
-//   const browser = await puppeteer.launch({
-//     headless: "new",
-//     args: ["--no-sandbox"],
-//   });
-//   const page = await browser.newPage();
-//   await page.goto(url, { waitUntil: "networkidle2", timeout: 0 });
-
-//   const caption = await page.$eval(
-//     "meta[property='og:description']",
-//     (el) => el.content
-//   );
-//   const thumbnail = await page.$eval(
-//     "meta[property='og:image']",
-//     (el) => el.content
-//   );
-//   await browser.close();
-//   return { caption, thumbnail };
-// }
-
 export async function processWithLLM(inputText, language = "en") {
   // Map language codes to full names for better LLM understanding
   const languageMap = {
@@ -263,279 +156,30 @@ function getYouTubeId(url) {
   return match ? match[1] : null;
 }
 
-// async function getYouTubeDescriptionAndThumbnail(url) {
-//   const browser = await puppeteer.launch({
-//     headless: "new",
-//     args: ["--no-sandbox"],
-//   });
-//   const page = await browser.newPage();
-//   await page.goto(url, { waitUntil: "networkidle2", timeout: 0 });
-
-//   const caption = await page.$eval(
-//     "meta[name='description']",
-//     (el) => el.content
-//   );
-//   await browser.close();
-
-//   const videoId = getYouTubeId(url);
-//   const thumbnail = videoId
-//     ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
-//     : null;
-
-//   return { caption, thumbnail };
-// }
-
-// app.post("/url-extract", async (req, res) => {
-//   const { url } = req.body;
-//   if (!url) return res.status(400).json({ error: "URL is required" });
-
-//   try {
-//     let captionText = "";
-//     let thumbnail = "";
-
-//     if (url.includes("instagram.com")) {
-//       const result = await getInstagramCaptionAndThumbnail(url);
-//       captionText = result.caption;
-//       thumbnail = result.thumbnail;
-//     } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
-//       const result = await getYouTubeDescriptionAndThumbnail(url);
-//       captionText = result.caption;
-//       thumbnail = result.thumbnail;
-//     }
-
-//     if (!captionText)
-//       return res.status(404).json({ error: "No caption found" });
-
-//     const structured = await processWithLLM(captionText);
-
-//     if (structured && typeof structured === "object") {
-//       structured.image = thumbnail;
-//     }
-
-//     res.status(200).json({ structured, thumbnail });
-//   } catch (error) {
-//     console.error("URL Extraction Error:", error);
-//     res
-//       .status(500)
-//       .json({ error: "Failed to process URL", detail: error.message });
-//   }
-// });
-
-// app.post("/url-extract", async (req, res) => {
-//   const { url, language = "en" } = req.body;
-//   if (!url) return res.status(400).json({ error: "URL is required" });
-
-//   try {
-//     let captionText = "";
-//     let thumbnail = "";
-//     let influencer = "";
-
-//     if (url.includes("instagram.com")) {
-//       const result = await getInstagramCaptionAndThumbnail(url);
-//       captionText = result.caption;
-//       thumbnail = result.thumbnail;
-//       influencer = result.influencer || "";
-//     } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
-//       const result = await getYouTubeDescriptionAndThumbnail(url);
-//       captionText = result.caption;
-//       thumbnail = result.thumbnail;
-//       influencer = result.influencer || "";
-//     } else if (url.includes("tiktok.com")) {
-//       const result = await getTikTokCaptionAndThumbnail(url);
-//       captionText = result.caption;
-//       thumbnail = result.thumbnail;
-//       influencer = result.influencer || "";
-//     }
-
-//     if (!captionText)
-//       return res.status(404).json({ error: "No caption found" });
-
-//     const structured = await processWithLLM(captionText, language);
-
-//     if (structured && typeof structured === "object") {
-//       structured.image = thumbnail;
-//       if (influencer && !structured.influencer) {
-//         structured.influencer = influencer;
-//       }
-//     }
-
-//     res.status(200).json({ structured, thumbnail });
-//   } catch (error) {
-//     console.error("URL Extraction Error:", error);
-//     res
-//       .status(500)
-//       .json({ error: "Failed to process URL", detail: error.message });
-//   }
-// });
-
-// app.post("/url-extract", apiLimiter, async (req, res) => {
-//   const { url, language = "en", device_id, user_id } = req.body;
-//   if (!url) return res.status(400).json({ error: "URL is required" });
-
-//   try {
-//     let captionText = "";
-//     let thumbnail = "";
-//     let influencer = "";
-
-//     if (url.includes("instagram.com")) {
-//       const result = await getInstagramCaptionAndThumbnail(url);
-//       captionText = result.caption;
-//       thumbnail = result.thumbnail;
-//       influencer = result.influencer || "";
-//     } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
-//       const result = await getYouTubeDescriptionAndThumbnail(url);
-//       captionText = result.caption;
-//       thumbnail = result.thumbnail;
-//       influencer = result.influencer || "";
-//     } else if (url.includes("tiktok.com")) {
-//       const result = await getTikTokCaptionAndThumbnail(url);
-//       captionText = result.caption;
-//       thumbnail = result.thumbnail;
-//       influencer = result.influencer || "";
-//     }
-
-//     if (!captionText)
-//       return res.status(404).json({ error: "No caption found" });
-
-//     const structured = await processWithLLM(captionText, language);
-
-//     if (structured && typeof structured === "object") {
-//       structured.image = thumbnail;
-//       if (influencer && !structured.influencer) {
-//         structured.influencer = influencer;
-//       }
-//     }
-
-//     // Persist to Supabase so the app can pick it up even if it was closed
-//     if (structured && device_id) {
-//       try {
-//         await supabaseAdmin.from("pending_imports").insert({
-//           device_id,
-//           user_id: user_id || null,
-//           recipe_data: structured,
-//           url,
-//           status: "completed",
-//         });
-//         console.log("✅ Saved pending import for device:", device_id);
-//       } catch (e) {
-//         console.error("Failed to save pending import:", e.message);
-//       }
-//     }
-
-//     res.status(200).json({ structured, thumbnail });
-//   } catch (error) {
-//     console.error("URL Extraction Error:", error);
-//     res
-//       .status(500)
-//       .json({ error: "Failed to process URL", detail: error.message });
-//   }
-// });
-
-// app.post("/url-extract", apiLimiter, async (req, res) => {
-//   const { url, language = "en", device_id, user_id, push_token } = req.body;
-//   if (!url) return res.status(400).json({ error: "URL is required" });
-
-//   try {
-//     let captionText = "";
-//     let thumbnail = "";
-//     let influencer = "";
-
-//     if (url.includes("instagram.com")) {
-//       const result = await getInstagramCaptionAndThumbnail(url);
-//       captionText = result.caption;
-//       thumbnail = result.thumbnail;
-//       influencer = result.influencer || "";
-//     } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
-//       const result = await getYouTubeDescriptionAndThumbnail(url);
-//       captionText = result.caption;
-//       thumbnail = result.thumbnail;
-//       influencer = result.influencer || "";
-//     } else if (url.includes("tiktok.com")) {
-//       const result = await getTikTokCaptionAndThumbnail(url);
-//       captionText = result.caption;
-//       thumbnail = result.thumbnail;
-//       influencer = result.influencer || "";
-//     }
-
-//     if (!captionText)
-//       return res.status(404).json({ error: "No caption found" });
-
-//     const structured = await processWithLLM(captionText, language);
-
-//     if (structured && typeof structured === "object") {
-//       structured.image = thumbnail;
-//       if (influencer && !structured.influencer) {
-//         structured.influencer = influencer;
-//       }
-//     }
-
-//     // Persist to Supabase so the app can pick it up even if it was closed
-//     if (structured && device_id) {
-//       try {
-//         await supabaseAdmin.from("pending_imports").insert({
-//           device_id,
-//           user_id: user_id || null,
-//           recipe_data: structured,
-//           url,
-//           status: "completed",
-//         });
-//         console.log("✅ Saved pending import for device:", device_id);
-//       } catch (e) {
-//         console.error("Failed to save pending import:", e.message);
-//       }
-
-//       // Send push notification so user knows even if app is closed
-//       if (push_token) {
-//         try {
-//           await fetch("https://exp.host/--/api/v2/push/send", {
-//             method: "POST",
-//             headers: {
-//               "Content-Type": "application/json",
-//               Accept: "application/json",
-//             },
-//             body: JSON.stringify({
-//               to: push_token,
-//               title: "Recipe Imported! 🎉",
-//               body: structured.title
-//                 ? `"${structured.title}" is ready to view`
-//                 : "Your recipe has been extracted. Tap to view.",
-//               data: { type: "recipe_imported" },
-//               sound: "default",
-//             }),
-//           });
-//           console.log("✅ Push notification sent to:", push_token);
-//         } catch (e) {
-//           console.error("Failed to send push notification:", e.message);
-//         }
-//       }
-//     }
-
-//     res.status(200).json({ structured, thumbnail });
-//   } catch (error) {
-//     console.error("URL Extraction Error:", error);
-//     res
-//       .status(500)
-//       .json({ error: "Failed to process URL", detail: error.message });
-//   }
-// });
-
 app.post("/url-extract", apiLimiter, async (req, res) => {
-  const { url, language = "en", device_id, user_id, push_token } = req.body;
+  const {
+    url,
+    language = "en",
+    device_id,
+    user_id,
+    push_token,
+    rc_app_user_id,
+  } = req.body;
   if (!url) return res.status(400).json({ error: "URL is required" });
 
   // 1) Pre-flight quota check. Defense-in-depth: the client also checks
   //    before calling, but Pro/non-Pro is ultimately decided here.
   try {
-    const quota = await checkQuotaAllowed(device_id, user_id);
+    const quota = await checkQuotaAllowed(device_id, user_id, rc_app_user_id);
     if (!quota.allowed) {
       console.log(
-        `🚫 Quota exceeded — device:${device_id} user:${user_id} ${quota.count}/${quota.quotaTotal}`,
+        `🚫 Quota exceeded — device:${device_id} user:${user_id} rc:${rc_app_user_id} ${quota.count}/${quota.quotaTotal}`,
       );
-      // return res.status(402).json({
-      //   error: "QUOTA_EXCEEDED",
-      //   count: quota.count,
-      //   quota_total: quota.quotaTotal,
-      // });
+      return res.status(402).json({
+        error: "QUOTA_EXCEEDED",
+        count: quota.count,
+        quota_total: quota.quotaTotal,
+      });
     }
   } catch (qErr) {
     console.error("Quota check failed:", qErr.message);
@@ -651,49 +295,49 @@ app.post("/url-extract", apiLimiter, async (req, res) => {
   }
 });
 
-async function checkQuotaAllowed(deviceId, userId) {
-  if (!deviceId && !userId) return { allowed: true };
+// async function checkQuotaAllowed(deviceId, userId, rc_app_user_id) {
+//   if (!deviceId && !userId) return { allowed: true };
 
-  if (userId) {
-    const { data: sub } = await supabaseAdmin
-      .from("subscriptions")
-      .select("is_pro")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (sub?.is_pro) return { allowed: true, isPro: true };
-  }
+//   if (userId) {
+//     const { data: sub } = await supabaseAdmin
+//       .from("subscriptions")
+//       .select("is_pro")
+//       .eq("user_id", userId)
+//       .maybeSingle();
+//     if (sub?.is_pro) return { allowed: true, isPro: true };
+//   }
 
-  // Single source of truth: the device row.
-  const { data: row } = await supabaseAdmin
-    .from("extraction_usage")
-    .select("count, quota_total, period_start")
-    .eq("device_id", deviceId)
-    .maybeSingle();
+//   // Single source of truth: the device row.
+//   const { data: row } = await supabaseAdmin
+//     .from("extraction_usage")
+//     .select("count, quota_total, period_start")
+//     .eq("device_id", deviceId)
+//     .maybeSingle();
 
-  if (!row) return { allowed: true, count: 0, quotaTotal: 10 };
+//   if (!row) return { allowed: true, count: 0, quotaTotal: 10 };
 
-  const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-  const periodStart = row.period_start
-    ? new Date(row.period_start).getTime()
-    : 0;
-  if (periodStart > 0 && Date.now() >= periodStart + WINDOW_MS) {
-    return {
-      allowed: true,
-      count: 0,
-      quotaTotal: row.quota_total ?? 10,
-      windowExpired: true,
-    };
-  }
+//   const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+//   const periodStart = row.period_start
+//     ? new Date(row.period_start).getTime()
+//     : 0;
+//   if (periodStart > 0 && Date.now() >= periodStart + WINDOW_MS) {
+//     return {
+//       allowed: true,
+//       count: 0,
+//       quotaTotal: row.quota_total ?? 10,
+//       windowExpired: true,
+//     };
+//   }
 
-  const count = row.count ?? 0;
-  const quotaTotal = row.quota_total ?? 10;
-  return {
-    allowed: count < quotaTotal,
-    count,
-    quotaTotal,
-    remaining: Math.max(0, quotaTotal - count),
-  };
-}
+//   const count = row.count ?? 0;
+//   const quotaTotal = row.quota_total ?? 10;
+//   return {
+//     allowed: count < quotaTotal,
+//     count,
+//     quotaTotal,
+//     remaining: Math.max(0, quotaTotal - count),
+//   };
+// }
 
 // async function checkQuotaAllowed(deviceId, userId) {
 //   // No identity provided — graceful pass-through (don't break legacy clients).
@@ -781,6 +425,69 @@ async function checkQuotaAllowed(deviceId, userId) {
 //     remaining: Math.max(0, quotaTotal - count),
 //   };
 // }
+
+async function checkQuotaAllowed(deviceId, userId, rc_app_user_id) {
+  if (!deviceId && !userId && !rc_app_user_id) return { allowed: true };
+  // RC is source of truth for Pro. For logged-in users rc_app_user_id should
+  // normally equal userId after Purchases.logIn(userId), but this fallback keeps
+  // older clients working if they don't send rc_app_user_id yet.
+  const rcAppUserId = rc_app_user_id || userId;
+  if (rcAppUserId) {
+    const isPro = await isRevenueCatPro(rcAppUserId);
+    if (isPro) return { allowed: true, isPro: true };
+  }
+  // Non-Pro users use device quota.
+  if (!deviceId) return { allowed: true };
+  const { data: row } = await supabaseAdmin
+    .from("extraction_usage")
+    .select("count, quota_total, period_start")
+    .eq("device_id", deviceId)
+    .maybeSingle();
+  if (!row) return { allowed: true, count: 0, quotaTotal: 10 };
+  const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+  const periodStart = row.period_start
+    ? new Date(row.period_start).getTime()
+    : 0;
+  if (periodStart > 0 && Date.now() >= periodStart + WINDOW_MS) {
+    return {
+      allowed: true,
+      count: 0,
+      quotaTotal: row.quota_total ?? 10,
+      windowExpired: true,
+    };
+  }
+  const count = row.count ?? 0;
+  const quotaTotal = row.quota_total ?? 10;
+  return {
+    allowed: count < quotaTotal,
+    count,
+    quotaTotal,
+    remaining: Math.max(0, quotaTotal - count),
+  };
+}
+
+async function isRevenueCatPro(rcAppUserId) {
+  if (!rcAppUserId || !REVENUECAT_SECRET_KEY) return false;
+  const resp = await fetch(
+    `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(rcAppUserId)}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${REVENUECAT_SECRET_KEY}`,
+        "Content-Type": "application/json",
+      },
+    },
+  );
+  if (!resp.ok) {
+    throw new Error(`RevenueCat check failed: ${resp.status}`);
+  }
+  const data = await resp.json();
+  const entitlement = data?.subscriber?.entitlements?.[ENTITLEMENT_ID];
+  if (!entitlement) return false;
+  // Lifetime entitlement has null expires_date. Otherwise it must be in future.
+  if (!entitlement.expires_date) return true;
+  return new Date(entitlement.expires_date).getTime() > Date.now();
+}
 
 async function getInstagramCaptionAndThumbnail(url) {
   try {
