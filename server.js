@@ -295,136 +295,126 @@ app.post("/url-extract", apiLimiter, async (req, res) => {
   }
 });
 
-// async function checkQuotaAllowed(deviceId, userId, rc_app_user_id) {
-//   if (!deviceId && !userId) return { allowed: true };
+// Recimate Feature
+app.post("/recipe-chat", apiLimiter, async (req, res) => {
+  const { recipe, userMessage, history = [] } = req.body;
+  if (!recipe || !userMessage) {
+    return res.status(400).json({ error: "recipe and userMessage are required" });
+  }
+  const ingredients = (recipe.ingredients ?? []).join(", ");
+  const systemPrompt = `You are a recipe assistant. Answer only cooking, food, or nutrition questions.
+For anything else reply exactly: "I can only help with cooking and recipe questions!"
+Current recipe: ${recipe.title}
+Ingredients: ${ingredients}
+Rules:
+- Return 1 clear sentence so the user can understand the suggestion unless the user asks for more detailed advice.
+- Each bullet must be a specific, actionable change or substitution.
+- Use exact quantities when relevant.
+- Never repeat the question back to the user.
+ALWAYS respond with a single valid JSON object — no markdown, no extra text:
+{ "reply": "Your clear sentence here" }`;
+  const recentHistory = (history ?? []).slice(-5);
+  const messages = [
+    { role: "system", content: systemPrompt },
+    ...recentHistory,
+    { role: "user", content: userMessage },
+  ];
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages,
+      temperature: 0.6,
+      max_tokens: 400,
+    });
+    const rawText = completion.choices[0]?.message?.content?.trim() ?? "";
+    let cleanText = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+    const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return res.status(200).json({ reply: rawText || "I couldn't process that. Try again." });
+    }
+    const parsed = JSON.parse(jsonMatch[0]);
+    res.status(200).json({ reply: parsed.reply ?? "Here's my suggestion." });
+  } catch (error) {
+    console.error("Recipe chat error:", error);
+    res.status(500).json({ error: "Failed to process request", detail: error.message });
+  }
+});
 
-//   if (userId) {
-//     const { data: sub } = await supabaseAdmin
-//       .from("subscriptions")
-//       .select("is_pro")
-//       .eq("user_id", userId)
-//       .maybeSingle();
-//     if (sub?.is_pro) return { allowed: true, isPro: true };
-//   }
+// Nutrition Estimate Feature
+app.post("/nutrition-estimate", apiLimiter, async (req, res) => {
+  const { title, ingredients, servings = 1 } = req.body;
 
-//   // Single source of truth: the device row.
-//   const { data: row } = await supabaseAdmin
-//     .from("extraction_usage")
-//     .select("count, quota_total, period_start")
-//     .eq("device_id", deviceId)
-//     .maybeSingle();
+  if (!title || !Array.isArray(ingredients) || ingredients.length === 0) {
+    return res.status(400).json({ error: "title and ingredients are required" });
+  }
 
-//   if (!row) return { allowed: true, count: 0, quotaTotal: 10 };
+  const ingredientList = ingredients.map((i) => `- ${i}`).join("\n");
 
-//   const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-//   const periodStart = row.period_start
-//     ? new Date(row.period_start).getTime()
-//     : 0;
-//   if (periodStart > 0 && Date.now() >= periodStart + WINDOW_MS) {
-//     return {
-//       allowed: true,
-//       count: 0,
-//       quotaTotal: row.quota_total ?? 10,
-//       windowExpired: true,
-//     };
-//   }
+  const userPrompt =
+    `Recipe: ${title}\nServings: ${servings}\nIngredients:\n${ingredientList}\n\n` +
+    `First, check: are these actual food/cooking ingredients?\n` +
+    `- If NO (e.g. electronics, furniture, random words) → return exactly: { "valid": false }\n` +
+    `- If YES → calculate total nutrition for the ENTIRE recipe using the EXACT quantities listed ` +
+    `(e.g. "1000 ml oil" means 1000 ml, not 1 tbsp). ` +
+    `Then divide each value by ${servings} to get per-serving amounts. ` +
+    `Return integer values:\n` +
+    `{ "valid": true, "calories": <kcal/serving>, "protein": <g/serving>, "carbs": <g/serving>, ` +
+    `"fat": <g/serving>, "fiber": <g/serving>,\n` +
+    `  "micronutrients": { "iron": <mg/serving>, "calcium": <mg/serving>, "vitaminA": <mcg/serving>, ` +
+    `"vitaminC": <mg/serving>, "potassium": <mg/serving> } }`;
 
-//   const count = row.count ?? 0;
-//   const quotaTotal = row.quota_total ?? 10;
-//   return {
-//     allowed: count < quotaTotal,
-//     count,
-//     quotaTotal,
-//     remaining: Math.max(0, quotaTotal - count),
-//   };
-// }
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      max_tokens: 400,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a precise nutrition calculator. " +
+            "CRITICAL RULE: Always use the EXACT quantity and unit written for each ingredient — " +
+            "never substitute a default serving size. " +
+            "Sum nutrition across all ingredients for the whole recipe, then divide by servings. " +
+            "Respond with a single valid JSON object only — no markdown, no explanation.",
+        },
+        { role: "user", content: userPrompt },
+      ],
+    });
 
-// async function checkQuotaAllowed(deviceId, userId) {
-//   // No identity provided — graceful pass-through (don't break legacy clients).
-//   if (!deviceId && !userId) return { allowed: true };
+    const rawText = completion.choices[0]?.message?.content?.trim() ?? "";
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
 
-//   // Pro users bypass the quota.
-//   if (userId) {
-//     const { data: sub } = await supabaseAdmin
-//       .from("subscriptions")
-//       .select("is_pro")
-//       .eq("user_id", userId)
-//       .maybeSingle();
-//     if (sub?.is_pro) return { allowed: true, isPro: true };
-//   }
+    if (!jsonMatch) {
+      return res.status(500).json({ error: "No JSON in OpenAI response" });
+    }
 
-//   // Prefer the user's row when signed in; otherwise fall back to the device row.
-//   const filter = userId ? { user_id: userId } : { device_id: deviceId };
-//   const { data: row } = await supabaseAdmin
-//     .from("extraction_usage")
-//     .select("count, quota_total")
-//     .match(filter)
-//     .maybeSingle();
+    const parsed = JSON.parse(jsonMatch[0]);
 
-//   const count = row?.count ?? 0;
-//   const quotaTotal = row?.quota_total ?? 10;
-//   return {
-//     allowed: count < quotaTotal,
-//     count,
-//     quotaTotal,
-//     remaining: Math.max(0, quotaTotal - count),
-//   };
-// }
+    if (parsed.valid === false) {
+      return res.status(422).json({ error: "INVALID_INGREDIENTS" });
+    }
 
-// ============ REPLACE YOUR PUPPETEER FUNCTIONS WITH THESE ============
-
-// async function checkQuotaAllowed(deviceId, userId) {
-//   // No identity provided — graceful pass-through (don't break legacy clients).
-//   if (!deviceId && !userId) return { allowed: true };
-
-//   // Pro users bypass the quota.
-//   if (userId) {
-//     const { data: sub } = await supabaseAdmin
-//       .from("subscriptions")
-//       .select("is_pro")
-//       .eq("user_id", userId)
-//       .maybeSingle();
-//     if (sub?.is_pro) return { allowed: true, isPro: true };
-//   }
-
-//   // Prefer the user's row when signed in; otherwise fall back to the device row.
-//   const filter = userId ? { user_id: userId } : { device_id: deviceId };
-//   const { data: row } = await supabaseAdmin
-//     .from("extraction_usage")
-//     .select("count, quota_total, period_start")
-//     .match(filter)
-//     .maybeSingle();
-
-//   if (!row) return { allowed: true, count: 0, quotaTotal: 10 };
-
-//   // Window-expired check — free users get 10 imports per 7-day window,
-//   // anchored to period_start. If the window has expired, treat as fresh;
-//   // the increment RPC will atomically reset count=1 + period_start=now()
-//   // when the next extraction succeeds.
-//   const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-//   const periodStart = row.period_start
-//     ? new Date(row.period_start).getTime()
-//     : 0;
-//   const windowExpired =
-//     periodStart > 0 && Date.now() >= periodStart + WINDOW_MS;
-//   if (windowExpired) {
-//     return {
-//       allowed: true,
-//       count: 0,
-//       quotaTotal: row.quota_total ?? 10,
-//       windowExpired: true,
-//     };
-//   }
-
-//   const count = row.count ?? 0;
-//   const quotaTotal = row.quota_total ?? 10;
-//   return {
-//     allowed: count < quotaTotal,
-//     count,
-//     quotaTotal,
-//     remaining: Math.max(0, quotaTotal - count),
-//   };
-// }
+    res.status(200).json({
+      calories:  Math.round(Number(parsed.calories)  || 0),
+      protein:   Math.round(Number(parsed.protein)   || 0),
+      carbs:     Math.round(Number(parsed.carbs)      || 0),
+      fat:       Math.round(Number(parsed.fat)        || 0),
+      fiber:     Math.round(Number(parsed.fiber)      || 0),
+      micronutrients: {
+        iron:      Math.round(Number(parsed.micronutrients?.iron)      || 0),
+        calcium:   Math.round(Number(parsed.micronutrients?.calcium)   || 0),
+        vitaminA:  Math.round(Number(parsed.micronutrients?.vitaminA)  || 0),
+        vitaminC:  Math.round(Number(parsed.micronutrients?.vitaminC)  || 0),
+        potassium: Math.round(Number(parsed.micronutrients?.potassium) || 0),
+      },
+    });
+  } catch (error) {
+    console.error("Nutrition estimate error:", error);
+    res.status(500).json({ error: "Failed to estimate nutrition", detail: error.message });
+  }
+});
 
 async function checkQuotaAllowed(deviceId, userId, rc_app_user_id) {
   if (!deviceId && !userId && !rc_app_user_id) return { allowed: true };
@@ -667,34 +657,6 @@ async function getTikTokCaptionAndThumbnail(url) {
   }
 }
 
-// app.post("/ocr", upload.single("photo"), async (req, res) => {
-//   try {
-//     if (!req.file) return res.status(400).json({ error: "No file received" });
-//     console.log("File received:", req.file);
-
-//     const imagePath = req.file.path;
-
-//     const {
-//       data: { text },
-//     } = await Tesseract.recognize(imagePath, "eng");
-
-//     fs.unlinkSync(imagePath);
-
-//     if (!text || text.trim() === "") {
-//       return res.status(200).json({ extracted: "⚠️ No text found in image" });
-//     }
-//     console.log("Extracted text " + text);
-
-//     const structured = await processWithLLM(text);
-//     res.status(200).json({ parsed: text, structured });
-//   } catch (err) {
-//     console.error("OCR error:", err.message);
-//     res
-//       .status(500)
-//       .json({ error: "OCR processing failed", detail: err.message });
-//   }
-// });
-
 app.post("/ocr", apiLimiter, upload.single("photo"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file received" });
@@ -877,64 +839,6 @@ app.post("/nutrition/text", apiLimiter, async (req, res) => {
     return res.status(500).json({ error: "Failed to process nutrition data" });
   }
 });
-
-// Audio-based macro calculation (Whisper + GPT)
-// app.post("/nutrition/audio", upload.single("audio"), async (req, res) => {
-//   let filePath = null;
-//   try {
-//     if (!req.file)
-//       return res.status(400).json({ error: "audio file is required" });
-
-//     filePath = req.file.path + ".m4a";
-//     fs.renameSync(req.file.path, filePath);
-
-//     // Step 1: Transcribe with Whisper
-//     const transcription = await openai.audio.transcriptions.create({
-//       file: fs.createReadStream(req.file.path),
-//       model: "whisper-1",
-//     });
-
-//     // Clean up uploaded file
-//     fs.unlinkSync(req.file.path);
-
-//     if (!transcription.text || transcription.text.trim().length === 0) {
-//       return res.status(200).json({
-//         items: [],
-//         total: { calories: 0, protein: 0, carbs: 0, fat: 0 },
-//         summary: "",
-//         error: "Could not understand the audio. Please try again.",
-//       });
-//     }
-
-//     console.log("Whisper transcription:", transcription.text);
-
-//     // Step 2: Calculate macros with GPT
-//     const response = await openai.chat.completions.create({
-//       model: "gpt-4o-mini",
-//       messages: [
-//         { role: "system", content: MACRO_PROMPT },
-//         { role: "user", content: `I ate: ${transcription.text}` },
-//       ],
-//       temperature: 0.3,
-//       response_format: { type: "json_object" },
-//     });
-
-//     const content = response.choices[0].message.content;
-//     if (!content) return res.status(500).json({ error: "Empty AI response" });
-
-//     const result = JSON.parse(content);
-//     result.transcription = transcription.text;
-//     return res.status(200).json(result);
-//   } catch (error) {
-//     console.error("Nutrition audio error:", error);
-//     if (req.file?.path) {
-//       try {
-//         fs.unlinkSync(req.file.path);
-//       } catch (e) {}
-//     }
-//     return res.status(500).json({ error: "Failed to process audio" });
-//   }
-// });
 
 app.post(
   "/nutrition/audio",
