@@ -129,6 +129,7 @@ export async function processWithLLM(inputText, language = "en") {
   - Each instruction step should be a complete detailed sentence in ${languageName}.
   - Estimate total_calories, protein, carbs, and fat based on the ingredients and their mentioned quantities.
   - Return approximate values for the entire recipe (not per 100g).
+  - for "serving_size": Extract number of servings. If a range is given (e.g. "2-3 servings" or "serves 2 to 3"), return the average as a single number (e.g. 2.5). Do NOT concatenate numbers (e.g. "2-3" ≠ 23). If unclear, return 1.
   - Nutritional values can remain as numbers (they don't need translation).
   `;
 
