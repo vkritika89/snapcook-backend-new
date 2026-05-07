@@ -359,80 +359,80 @@ ALWAYS respond with a single valid JSON object — no markdown, no extra text:
 });
 
 // Nutrition Estimate Feature
-app.post("/nutrition-estimate", apiLimiter, async (req, res) => {
-  const { title, ingredients, servings = 1 } = req.body;
+// app.post("/nutrition-estimate", apiLimiter, async (req, res) => {
+//   const { title, ingredients, servings = 1 } = req.body;
 
-  if (!title || !Array.isArray(ingredients) || ingredients.length === 0) {
-    return res.status(400).json({ error: "title and ingredients are required" });
-  }
+//   if (!title || !Array.isArray(ingredients) || ingredients.length === 0) {
+//     return res.status(400).json({ error: "title and ingredients are required" });
+//   }
 
-  const ingredientList = ingredients.map((i) => `- ${i}`).join("\n");
+//   const ingredientList = ingredients.map((i) => `- ${i}`).join("\n");
 
-  const userPrompt =
-    `Recipe: ${title}\nServings: ${servings}\nIngredients:\n${ingredientList}\n\n` +
-    `First, check: are these actual food/cooking ingredients?\n` +
-    `- If NO (e.g. electronics, furniture, random words) → return exactly: { "valid": false }\n` +
-    `- If YES → calculate total nutrition for the ENTIRE recipe using the EXACT quantities listed ` +
-    `(e.g. "1000 ml oil" means 1000 ml, not 1 tbsp). ` +
-    `Then divide each value by ${servings} to get per-serving amounts. ` +
-    `Return integer values:\n` +
-    `{ "valid": true, "calories": <kcal/serving>, "protein": <g/serving>, "carbs": <g/serving>, ` +
-    `"fat": <g/serving>, "fiber": <g/serving>,\n` +
-    `  "micronutrients": { "iron": <mg/serving>, "calcium": <mg/serving>, "vitaminA": <mcg/serving>, ` +
-    `"vitaminC": <mg/serving>, "potassium": <mg/serving> } }`;
+//   const userPrompt =
+//     `Recipe: ${title}\nServings: ${servings}\nIngredients:\n${ingredientList}\n\n` +
+//     `First, check: are these actual food/cooking ingredients?\n` +
+//     `- If NO (e.g. electronics, furniture, random words) → return exactly: { "valid": false }\n` +
+//     `- If YES → calculate total nutrition for the ENTIRE recipe using the EXACT quantities listed ` +
+//     `(e.g. "1000 ml oil" means 1000 ml, not 1 tbsp). ` +
+//     `Then divide each value by ${servings} to get per-serving amounts. ` +
+//     `Return integer values:\n` +
+//     `{ "valid": true, "calories": <kcal/serving>, "protein": <g/serving>, "carbs": <g/serving>, ` +
+//     `"fat": <g/serving>, "fiber": <g/serving>,\n` +
+//     `  "micronutrients": { "iron": <mg/serving>, "calcium": <mg/serving>, "vitaminA": <mcg/serving>, ` +
+//     `"vitaminC": <mg/serving>, "potassium": <mg/serving> } }`;
 
-  try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0,
-      max_tokens: 400,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a precise nutrition calculator. " +
-            "CRITICAL RULE: Always use the EXACT quantity and unit written for each ingredient — " +
-            "never substitute a default serving size. " +
-            "Sum nutrition across all ingredients for the whole recipe, then divide by servings. " +
-            "Respond with a single valid JSON object only — no markdown, no explanation.",
-        },
-        { role: "user", content: userPrompt },
-      ],
-    });
+//   try {
+//     const completion = await openai.chat.completions.create({
+//       model: "gpt-4o-mini",
+//       temperature: 0,
+//       max_tokens: 400,
+//       response_format: { type: "json_object" },
+//       messages: [
+//         {
+//           role: "system",
+//           content:
+//             "You are a precise nutrition calculator. " +
+//             "CRITICAL RULE: Always use the EXACT quantity and unit written for each ingredient — " +
+//             "never substitute a default serving size. " +
+//             "Sum nutrition across all ingredients for the whole recipe, then divide by servings. " +
+//             "Respond with a single valid JSON object only — no markdown, no explanation.",
+//         },
+//         { role: "user", content: userPrompt },
+//       ],
+//     });
 
-    const rawText = completion.choices[0]?.message?.content?.trim() ?? "";
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+//     const rawText = completion.choices[0]?.message?.content?.trim() ?? "";
+//     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
 
-    if (!jsonMatch) {
-      return res.status(500).json({ error: "No JSON in OpenAI response" });
-    }
+//     if (!jsonMatch) {
+//       return res.status(500).json({ error: "No JSON in OpenAI response" });
+//     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
+//     const parsed = JSON.parse(jsonMatch[0]);
 
-    if (parsed.valid === false) {
-      return res.status(422).json({ error: "INVALID_INGREDIENTS" });
-    }
+//     if (parsed.valid === false) {
+//       return res.status(422).json({ error: "INVALID_INGREDIENTS" });
+//     }
 
-    res.status(200).json({
-      calories:  Math.round(Number(parsed.calories)  || 0),
-      protein:   Math.round(Number(parsed.protein)   || 0),
-      carbs:     Math.round(Number(parsed.carbs)      || 0),
-      fat:       Math.round(Number(parsed.fat)        || 0),
-      fiber:     Math.round(Number(parsed.fiber)      || 0),
-      micronutrients: {
-        iron:      Math.round(Number(parsed.micronutrients?.iron)      || 0),
-        calcium:   Math.round(Number(parsed.micronutrients?.calcium)   || 0),
-        vitaminA:  Math.round(Number(parsed.micronutrients?.vitaminA)  || 0),
-        vitaminC:  Math.round(Number(parsed.micronutrients?.vitaminC)  || 0),
-        potassium: Math.round(Number(parsed.micronutrients?.potassium) || 0),
-      },
-    });
-  } catch (error) {
-    console.error("Nutrition estimate error:", error);
-    res.status(500).json({ error: "Failed to estimate nutrition", detail: error.message });
-  }
-});
+//     res.status(200).json({
+//       calories:  Math.round(Number(parsed.calories)  || 0),
+//       protein:   Math.round(Number(parsed.protein)   || 0),
+//       carbs:     Math.round(Number(parsed.carbs)      || 0),
+//       fat:       Math.round(Number(parsed.fat)        || 0),
+//       fiber:     Math.round(Number(parsed.fiber)      || 0),
+//       micronutrients: {
+//         iron:      Math.round(Number(parsed.micronutrients?.iron)      || 0),
+//         calcium:   Math.round(Number(parsed.micronutrients?.calcium)   || 0),
+//         vitaminA:  Math.round(Number(parsed.micronutrients?.vitaminA)  || 0),
+//         vitaminC:  Math.round(Number(parsed.micronutrients?.vitaminC)  || 0),
+//         potassium: Math.round(Number(parsed.micronutrients?.potassium) || 0),
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Nutrition estimate error:", error);
+//     res.status(500).json({ error: "Failed to estimate nutrition", detail: error.message });
+//   }
+// });
 
 async function checkQuotaAllowed(deviceId, userId, rc_app_user_id) {
   if (!deviceId && !userId && !rc_app_user_id) return { allowed: true };
