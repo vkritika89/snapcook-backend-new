@@ -1025,7 +1025,7 @@ app.post(
   },
 );
 
-app.post("/nutrition", apiLimiter, async (req, res) => {
+app.post("/nutrition-estimate", apiLimiter, async (req, res) => {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
     const {
@@ -1035,6 +1035,7 @@ app.post("/nutrition", apiLimiter, async (req, res) => {
       servingSizeForApi,
       language = "en",
     } = req.body;
+    console.log("nutrition-estimate", req.body);
 
     if (!title || !ingredientsForApi || !servingSizeForApi) {
       return res.status(400).json({
