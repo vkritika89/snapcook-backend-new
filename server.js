@@ -1011,12 +1011,18 @@ app.post(
 app.post("/nutrition", apiLimiter, async (req, res) => {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
-    const { recipeName, quantity, language = "en" } = req.body;
+    const {
+      id,
+      title,
+      ingredientsForApi,
+      servingSizeForApi,
+      language = "en",
+    } = req.body;
 
-    if (!recipeName || !quantity) {
-      return res
-        .status(400)
-        .json({ error: "recipeName and quantity are required" });
+    if (!title || !ingredientsForApi || !servingSizeForApi) {
+      return res.status(400).json({
+        error: "Recipe title, ingredients, and serving size are required",
+      });
     }
 
     // 1️⃣ Ask OpenAI for 100g portion only
@@ -1030,29 +1036,52 @@ app.post("/nutrition", apiLimiter, async (req, res) => {
 
     const languageName = languageMap[language] || "English";
 
-    const prompt = `You are a nutrition expert. Analyze if "${recipeName}" is a valid food item or recipe name. IMPORTANT: All text in your response (ingredient names, etc.) must be in ${languageName} language.
-    
-    IMPORTANT RULES:
-    1. If the input is NOT a real food item, recipe, or edible item, return:
-    {
-      "total": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0 },
-      "ingredients": [],
-      "imageUrl": ""
-    }
-    
-    2. If it IS a real food/recipe, give nutritional breakdown for exactly 100g portion only. All ingredient names must be in ${languageName}:
-    
-    {
-      "total": { "calories": X, "protein": X, "carbs": X, "fat": X },
-      "ingredients": [
-        { "name": "ingredient1", "calories": X, "protein": X, "carbs": X, "fat": X },
-        { "name": "ingredient2", "calories": X, "protein": X, "carbs": X, "fat": X }
-      ]
-    }
-    
-    3. Return valid JSON only. All values must be numbers (not strings).
-    4. Include a realistic imageUrl if available. Otherwise, set it to an empty string.
-    5. All ingredient names in the "ingredients" array must be in ${languageName} language.`;
+    const prompt = `You are a nutrition analysis expert.
+
+Your task is to calculate accurate nutritional values for a recipe based on its ingredients and serving size.
+
+IMPORTANT: All user-facing text (like warnings) must be in ${languageName} language.
+Do NOT translate JSON keys. Only translate text values.
+
+INPUT:
+- Recipe ID: ${id}
+- Recipe Title: ${title}
+- Ingredients: ${ingredientsForApi}
+- Serving Size: ${servingSizeForApi}
+
+INSTRUCTIONS:
+1. Identify and ignore any non-food items (e.g., plastic, foil, toothpick, packaging, wrapper).
+2. If any non-food items are found, add a warning message in ${languageName}.
+3. Estimate total nutrition for ONLY valid food ingredients.
+4. Then calculate PER SERVING values using the given serving size.
+5. Use standard nutritional assumptions when exact values are unknown.
+6. Return ONLY valid JSON (no explanation, no extra text).
+7. All numeric values must be numbers (no strings, no units).
+8. Units:
+   - calories → kcal
+   - protein, carbs, fat, fiber → grams
+   - iron, calcium, vitaminC, potassium → mg
+   - vitaminA → mcg
+9. Round all values to 1 decimal place.
+10. Ensure all values are >= 0.
+11. Always include the "warnings" field (empty array if none).
+
+OUTPUT FORMAT:
+{
+  "calories": number,
+  "protein": number,
+  "carbs": number,
+  "fat": number,
+  "fiber": number,
+  "micronutrients": {
+    "iron": number,
+    "calcium": number,
+    "vitaminA": number,
+    "vitaminC": number,
+    "potassium": number
+  },
+  "warnings": string[]
+}`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
