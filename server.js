@@ -16,7 +16,7 @@ import {
   HarmCategory,
 } from "@google/generative-ai";
 
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createClient } from "@supabase/supabase-js";
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL,
@@ -55,12 +55,29 @@ if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
 
+// const apiLimiter = rateLimit({
+//   windowMs: 60 * 1000,
+//   max: 15,
+//   standardHeaders: true,
+//   legacyHeaders: false,
+//   keyGenerator: (req) => req.body?.device_id || req.body?.user_id || req.ip,
+//   handler: (_req, res) => {
+//     res.status(429).json({
+//       error: "Too many requests. Please wait a minute before trying again.",
+//     });
+//   },
+// });
+
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 15,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.body?.device_id || req.body?.user_id || req.ip,
+
+  keyGenerator: (req) => {
+    return req.body?.device_id || req.body?.user_id || ipKeyGenerator(req.ip);
+  },
+
   handler: (_req, res) => {
     res.status(429).json({
       error: "Too many requests. Please wait a minute before trying again.",
