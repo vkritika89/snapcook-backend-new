@@ -1026,6 +1026,7 @@ OUTPUT FORMAT:
         temperature: 0.1,
       }),
     });
+    console.log("nutrition-estimate response:", response);
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -1040,6 +1041,7 @@ OUTPUT FORMAT:
     if (!jsonMatch) throw new Error("No JSON found in OpenAI response");
 
     let result = JSON.parse(jsonMatch[0]);
+    console.log("nutrition-estimate result:", result);
 
     return res.status(200).json(result);
   } catch (error) {
