@@ -937,12 +937,19 @@ app.post("/nutrition-estimate", apiLimiter, async (req, res) => {
       id,
       title,
       ingredientsForApi,
-      servingSizeForApi,
+      servingsForApi,
       language = "en",
     } = req.body;
     console.log("nutrition-estimate", req.body);
 
-    if (!title || !ingredientsForApi || !servingSizeForApi) {
+    if (
+      !title ||
+      !ingredientsForApi ||
+      !Array.isArray(ingredientsForApi) ||
+      ingredientsForApi.length === 0 ||
+      servingsForApi == null
+    ) {
+      console.log("❌ Invalid request:", req.body);
       return res.status(400).json({
         error: "Recipe title, ingredients, and serving size are required",
       });
@@ -970,7 +977,7 @@ INPUT:
 - Recipe ID: ${id}
 - Recipe Title: ${title}
 - Ingredients: ${ingredientsForApi}
-- Serving Size: ${servingSizeForApi}
+- Serving Size: ${servingsForApi}
 
 INSTRUCTIONS:
 1. Identify and ignore any non-food items (e.g., plastic, foil, toothpick, packaging, wrapper).
@@ -1033,23 +1040,6 @@ OUTPUT FORMAT:
     if (!jsonMatch) throw new Error("No JSON found in OpenAI response");
 
     let result = JSON.parse(jsonMatch[0]);
-
-    // 2️⃣ Scale to requested quantity
-    const factor = quantity / 100;
-
-    const scaleNutrition = (item) => ({
-      calories: +(item.calories * factor).toFixed(1),
-      protein: +(item.protein * factor).toFixed(1),
-      carbs: +(item.carbs * factor).toFixed(1),
-      fat: +(item.fat * factor).toFixed(1),
-    });
-
-    result.total = scaleNutrition(result.total);
-    result.ingredients = result.ingredients.map(scaleNutrition);
-
-    // 3️⃣ Optionally override imageUrl using your own fetchImageForRecipe()
-    const imageUrl = await fetchImageForRecipe(recipeName);
-    result.imageUrl = imageUrl || result.imageUrl || "";
 
     return res.status(200).json(result);
   } catch (error) {
