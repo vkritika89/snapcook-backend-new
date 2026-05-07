@@ -564,7 +564,7 @@ async function getYouTubeDescriptionAndThumbnail(url) {
 
     const run = await apifyClient.actor("streamers/youtube-scraper").call({
       startUrls: [{ url }],
-      maxResults: 1,
+      maxVideos: 1,
       maxResultsShorts: 1,
       scrapeComments: true,
       maxComments: 5,
