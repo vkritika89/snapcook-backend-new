@@ -110,8 +110,64 @@ if (!GEMINI_API_KEY) {
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
+// export async function processWithLLM(inputText, language = "en") {
+//   // Map language codes to full names for better LLM understanding
+//   const languageMap = {
+//     en: "English",
+//     fr: "French",
+//     de: "German",
+//     pt: "Portuguese",
+//     es: "Spanish",
+//   };
+
+//   const languageName = languageMap[language] || "English";
+
+//   const systemPrompt = `You are a helpful assistant that extracts recipe information from given text if present and returns only valid JSON with the following structure. IMPORTANT: All text in the response (title, ingredients, instructions, etc.) must be in ${languageName} language.
+
+//   {
+//     "title": string,
+//     "ingredients": string[],
+//     "instructions": string[],
+//     "influencer": string (optional),
+//     "nutritional_info": {
+//       "total_calories": string,
+//       "protein": string,
+//       "carbs": string,
+//       "fat": string
+//     },
+//     "cooking_time": string (optional),
+//     "serving_size": string (optional)
+//   }
+
+//   Rules:
+//   - Always return only JSON.
+//   - All text content (title, ingredients, instructions) must be in ${languageName}.
+//   - If any field is not present, leave it empty ("" or empty object/array).
+//   - Each instruction step should be a complete detailed sentence in ${languageName}.
+//   - Estimate total_calories, protein, carbs, and fat based on the ingredients and their mentioned quantities.
+//   - Return approximate values for the entire recipe (not per 100g).
+//   - for "serving_size": Extract number of servings. If a range is given (e.g. "2-3 servings" or "serves 2 to 3"), return the average as a single number (e.g. 2.5). Do NOT concatenate numbers (e.g. "2-3" ≠ 23). If unclear, return 1.
+//   - Nutritional values can remain as numbers (they don't need translation).
+//   `;
+
+//   const userPrompt = `Text: ${inputText}`;
+
+//   const response = await openai.chat.completions.create({
+//     model: "gpt-4o-mini",
+//     messages: [
+//       { role: "system", content: systemPrompt },
+//       { role: "user", content: userPrompt },
+//     ],
+//     temperature: 0,
+//     response_format: { type: "json_object" },
+//   });
+
+//   const content = response.choices[0].message.content;
+
+//   return JSON.parse(content);
+// }
+
 export async function processWithLLM(inputText, language = "en") {
-  // Map language codes to full names for better LLM understanding
   const languageMap = {
     en: "English",
     fr: "French",
@@ -120,35 +176,40 @@ export async function processWithLLM(inputText, language = "en") {
     es: "Spanish",
   };
 
-  const languageName = languageMap[language] || "English";
+  const raw = String(language || "en").trim();
+  const code = raw.split(/[-_]/)[0].toLowerCase();
+  const languageName = languageMap[code] || "English";
 
-  const systemPrompt = `You are a helpful assistant that extracts recipe information from given text if present and returns only valid JSON with the following structure. IMPORTANT: All text in the response (title, ingredients, instructions, etc.) must be in ${languageName} language.
+  const systemPrompt = `You are a helpful assistant that extracts recipe information from given text if present and returns only valid JSON with the following structure.
 
-  {
-    "title": string,
-    "ingredients": string[],
-    "instructions": string[],
-    "influencer": string (optional),
-    "nutritional_info": {
-      "total_calories": string,
-      "protein": string,
-      "carbs": string,
-      "fat": string
-    },
-    "cooking_time": string (optional),
-    "serving_size": string (optional)
-  }
-  
-  Rules:
-  - Always return only JSON.
-  - All text content (title, ingredients, instructions) must be in ${languageName}.
-  - If any field is not present, leave it empty ("" or empty object/array).
-  - Each instruction step should be a complete detailed sentence in ${languageName}.
-  - Estimate total_calories, protein, carbs, and fat based on the ingredients and their mentioned quantities.
-  - Return approximate values for the entire recipe (not per 100g).
-  - for "serving_size": Extract number of servings. If a range is given (e.g. "2-3 servings" or "serves 2 to 3"), return the average as a single number (e.g. 2.5). Do NOT concatenate numbers (e.g. "2-3" ≠ 23). If unclear, return 1.
-  - Nutritional values can remain as numbers (they don't need translation).
-  `;
+IMPORTANT:
+- All human-readable text in the response (title, ingredients, instructions, optional influencer name if you include it, cooking_time and serving_size strings if present) must be written in ${languageName}.
+- If the source text is in a different language, translate into ${languageName}. Do not leave recipe text in the source language.
+
+{
+  "title": string,
+  "ingredients": string[],
+  "instructions": string[],
+  "influencer": string (optional),
+  "nutritional_info": {
+    "total_calories": string,
+    "protein": string,
+    "carbs": string,
+    "fat": string
+  },
+  "cooking_time": string (optional),
+  "serving_size": string (optional)
+}
+
+Rules:
+- Always return only JSON.
+- All text content (title, ingredients, instructions) must be in ${languageName}.
+- If any field is not present, leave it empty ("" or empty object/array).
+- Each instruction step should be a complete detailed sentence in ${languageName}.
+- Estimate total_calories, protein, carbs, and fat based on the ingredients and their mentioned quantities.
+- Return approximate values for the entire recipe (not per 100g).
+- Nutritional numeric values may stay as digits inside the strings (no need to spell out numbers in words).
+`;
 
   const userPrompt = `Text: ${inputText}`;
 
@@ -163,7 +224,6 @@ export async function processWithLLM(inputText, language = "en") {
   });
 
   const content = response.choices[0].message.content;
-
   return JSON.parse(content);
 }
 
@@ -317,7 +377,9 @@ app.post("/url-extract", apiLimiter, async (req, res) => {
 app.post("/recipe-chat", apiLimiter, async (req, res) => {
   const { recipe, userMessage, history = [] } = req.body;
   if (!recipe || !userMessage) {
-    return res.status(400).json({ error: "recipe and userMessage are required" });
+    return res
+      .status(400)
+      .json({ error: "recipe and userMessage are required" });
   }
   const ingredients = (recipe.ingredients ?? []).join(", ");
   const systemPrompt = `You are a recipe assistant. Answer only cooking, food, or nutrition questions.
@@ -345,16 +407,22 @@ ALWAYS respond with a single valid JSON object — no markdown, no extra text:
       max_tokens: 400,
     });
     const rawText = completion.choices[0]?.message?.content?.trim() ?? "";
-    let cleanText = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+    let cleanText = rawText
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "");
     const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      return res.status(200).json({ reply: rawText || "I couldn't process that. Try again." });
+      return res
+        .status(200)
+        .json({ reply: rawText || "I couldn't process that. Try again." });
     }
     const parsed = JSON.parse(jsonMatch[0]);
     res.status(200).json({ reply: parsed.reply ?? "Here's my suggestion." });
   } catch (error) {
     console.error("Recipe chat error:", error);
-    res.status(500).json({ error: "Failed to process request", detail: error.message });
+    res
+      .status(500)
+      .json({ error: "Failed to process request", detail: error.message });
   }
 });
 
