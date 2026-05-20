@@ -3,7 +3,6 @@ import multer from "multer";
 import fs from "fs";
 import cors from "cors";
 import Tesseract from "tesseract.js";
-import puppeteer from "puppeteer";
 import OpenAI from "openai";
 import dotenv from "dotenv";
 import os from "os";
@@ -24,6 +23,10 @@ const supabaseAdmin = createClient(
 );
 
 import { fileURLToPath } from "url";
+import path from "path";
+
+app.use(express.static(path.join(__dirname, "public")));
+
 const REVENUECAT_SECRET_KEY = process.env.REVENUECAT_SECRET_KEY;
 const ENTITLEMENT_ID = "EzyCooking Pro";
 
