@@ -22,6 +22,7 @@ import { fileURLToPath } from "url";
 dotenv.config();
 
 const app = express();
+app.set("trust proxy", 1);
 
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL,
@@ -43,6 +44,11 @@ const upload = multer({ dest: "uploads/" });
 
 const apifyClient = new ApifyClient({
   token: process.env.APIFY_TOKEN,
+});
+
+app.use((err, req, res, next) => {
+  console.error("Global Error:", err.stack);
+  res.status(500).send("Something broke!");
 });
 
 const openai = new OpenAI({
@@ -1129,4 +1135,7 @@ const fetchImageForRecipe = async (recipeName) => {
 };
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Server running on port ${PORT}`);
+});
