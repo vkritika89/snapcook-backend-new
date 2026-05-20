@@ -17,70 +17,45 @@ import {
 
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createClient } from "@supabase/supabase-js";
+import { fileURLToPath } from "url";
+
+dotenv.config();
+
+const app = express();
+
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
 );
 
-import { fileURLToPath } from "url";
-import path from "path";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
+app.use(cors());
+app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 const REVENUECAT_SECRET_KEY = process.env.REVENUECAT_SECRET_KEY;
 const ENTITLEMENT_ID = "EzyCooking Pro";
 
-dotenv.config();
-
 const memUpload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ dest: "uploads/" });
 
 const apifyClient = new ApifyClient({
   token: process.env.APIFY_TOKEN,
 });
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY, // set your key in .env
+  apiKey: process.env.OPENAI_API_KEY,
 });
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-const upload = multer({ dest: "uploads/" });
-const client = new OpenAI();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Serve static landing page
-app.use(express.static(path.join(__dirname, "public")));
-
-if (!fs.existsSync("uploads")) {
-  fs.mkdirSync("uploads");
-}
-
-// const apiLimiter = rateLimit({
-//   windowMs: 60 * 1000,
-//   max: 15,
-//   standardHeaders: true,
-//   legacyHeaders: false,
-//   keyGenerator: (req) => req.body?.device_id || req.body?.user_id || req.ip,
-//   handler: (_req, res) => {
-//     res.status(429).json({
-//       error: "Too many requests. Please wait a minute before trying again.",
-//     });
-//   },
-// });
 
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 15,
   standardHeaders: true,
   legacyHeaders: false,
-
-  keyGenerator: (req) => {
-    return req.body?.device_id || req.body?.user_id || ipKeyGenerator(req.ip);
-  },
-
+  keyGenerator: (req) =>
+    req.body?.device_id || req.body?.user_id || ipKeyGenerator(req.ip),
   handler: (_req, res) => {
     res.status(429).json({
       error: "Too many requests. Please wait a minute before trying again.",
@@ -88,17 +63,27 @@ const apiLimiter = rateLimit({
   },
 });
 
-// Health check endpoint
+/* =========================
+   HEALTH CHECK
+========================= */
 app.get("/", (req, res) => {
   res.json({
     status: "OK",
     message: "SnapCook Backend is running!",
     timestamp: new Date().toISOString(),
-    environment: {
-      azure_key_set: !!process.env.AZURE_VISION_KEY,
-      gemini_key_set: !!process.env.GEMINI_API_KEY,
-    },
   });
+});
+
+/* =========================================================
+   🔥 EMAIL VERIFICATION FIX (SUPABASE CALLBACK HANDLER)
+   ========================================================= */
+
+app.get("/auth/callback", async (req, res) => {
+  try {
+    return res.sendFile(path.join(__dirname, "public", "email-verified.html"));
+  } catch (err) {
+    return res.status(500).send("Verification failed");
+  }
 });
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
