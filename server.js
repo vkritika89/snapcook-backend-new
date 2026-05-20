@@ -31,10 +31,14 @@ const supabaseAdmin = createClient(
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+
+app.get("/app-ads.txt", (req, res) => {
+  res.set("Content-Type", "text/plain");
+  res.sendFile(path.join(__dirname, "public", "app-ads.txt"));
+});
 
 const REVENUECAT_SECRET_KEY = process.env.REVENUECAT_SECRET_KEY;
 const ENTITLEMENT_ID = "EzyCooking Pro";
