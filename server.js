@@ -18,6 +18,7 @@ import {
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createClient } from "@supabase/supabase-js";
 import { fileURLToPath } from "url";
+import FormData from "form-data";
 
 dotenv.config();
 
@@ -742,43 +743,174 @@ async function getTikTokCaptionAndThumbnail(url) {
 }
 
 app.post("/ocr", apiLimiter, upload.single("photo"), async (req, res) => {
+  let processedPath = null;
+
   try {
-    if (!req.file) return res.status(400).json({ error: "No file received" });
-    console.log("File received:", req.file);
+    if (!req.file) {
+      return res.status(400).json({
+        error: "No file received",
+      });
+    }
+
+    console.log("📸 File received:", req.file);
 
     const imagePath = req.file.path;
-    const language = req.body.language || "en"; // Extract language from form data
+    const language = req.body.language || "en";
 
-    const tesseractLanguageMap = {
+    // OCR.Space language mapping
+    const ocrLanguageMap = {
       en: "eng",
       es: "spa",
-      fr: "fra",
-      de: "deu",
+      fr: "fre",
+      de: "ger",
       pt: "por",
     };
 
-    const tesseractLang = tesseractLanguageMap[language] || "eng";
+    const ocrLanguage = ocrLanguageMap[language] || "eng";
 
-    const {
-      data: { text },
-    } = await Tesseract.recognize(imagePath, tesseractLang);
+    // OPTIONAL:
+    // Improves Instagram/TikTok screenshot OCR quality
+    // install sharp first:
+    // npm install sharp
 
-    fs.unlinkSync(imagePath);
+    const sharp = (await import("sharp")).default;
 
-    if (!text || text.trim() === "") {
-      return res.status(200).json({ extracted: "⚠️ No text found in image" });
+    processedPath = `${imagePath}-processed.jpg`;
+
+    await sharp(imagePath)
+      .resize({
+        width: 1800,
+        withoutEnlargement: true,
+      })
+      .normalize()
+      .sharpen()
+      .jpeg({ quality: 95 })
+      .toFile(processedPath);
+
+    // Create multipart form data
+    const formData = new FormData();
+
+    formData.append("file", fs.createReadStream(processedPath));
+
+    formData.append("language", ocrLanguage);
+
+    formData.append("isOverlayRequired", "false");
+
+    formData.append("detectOrientation", "true");
+
+    formData.append("scale", "true");
+
+    formData.append("OCREngine", "2");
+
+    console.log("🚀 Sending image to OCR.Space...");
+
+    // OCR.Space request
+    const response = await axios.post(
+      "https://api.ocr.space/parse/image",
+      formData,
+      {
+        headers: {
+          apikey: process.env.OCR_SPACE_API_KEY,
+          ...formData.getHeaders(),
+        },
+        maxBodyLength: Infinity,
+      },
+    );
+
+    // Cleanup files
+    if (fs.existsSync(imagePath)) {
+      fs.unlinkSync(imagePath);
     }
-    console.log("Extracted text " + text);
 
-    const structured = await processWithLLM(text, language); // Pass language here
-    res.status(200).json({ parsed: text, structured });
+    if (processedPath && fs.existsSync(processedPath)) {
+      fs.unlinkSync(processedPath);
+    }
+
+    const parsedResults = response.data?.ParsedResults;
+
+    if (!parsedResults || parsedResults.length === 0) {
+      return res.status(200).json({
+        extracted: "⚠️ No text found in image",
+      });
+    }
+
+    // Merge OCR text
+    const extractedText = parsedResults.map((r) => r.ParsedText).join("\n");
+
+    console.log("📝 Extracted text:", extractedText);
+
+    if (!extractedText.trim()) {
+      return res.status(200).json({
+        extracted: "⚠️ No text found in image",
+      });
+    }
+
+    // Your existing AI recipe parser
+    const structured = await processWithLLM(extractedText, language);
+
+    return res.status(200).json({
+      parsed: extractedText,
+      structured,
+    });
   } catch (err) {
-    console.error("OCR error:", err.message);
-    res
-      .status(500)
-      .json({ error: "OCR processing failed", detail: err.message });
+    console.error("❌ OCR error:", err?.response?.data || err.message);
+
+    // Cleanup files on error too
+    try {
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+
+      if (processedPath && fs.existsSync(processedPath)) {
+        fs.unlinkSync(processedPath);
+      }
+    } catch (e) {}
+
+    return res.status(500).json({
+      error: "OCR processing failed",
+      detail: err?.response?.data || err.message,
+    });
   }
 });
+
+// app.post("/ocr", apiLimiter, upload.single("photo"), async (req, res) => {
+//   try {
+//     if (!req.file) return res.status(400).json({ error: "No file received" });
+//     console.log("File received:", req.file);
+
+//     const imagePath = req.file.path;
+//     const language = req.body.language || "en"; // Extract language from form data
+
+//     const tesseractLanguageMap = {
+//       en: "eng",
+//       es: "spa",
+//       fr: "fra",
+//       de: "deu",
+//       pt: "por",
+//     };
+
+//     const tesseractLang = tesseractLanguageMap[language] || "eng";
+
+//     const {
+//       data: { text },
+//     } = await Tesseract.recognize(imagePath, tesseractLang);
+
+//     fs.unlinkSync(imagePath);
+
+//     if (!text || text.trim() === "") {
+//       return res.status(200).json({ extracted: "⚠️ No text found in image" });
+//     }
+//     console.log("Extracted text " + text);
+
+//     const structured = await processWithLLM(text, language); // Pass language here
+//     res.status(200).json({ parsed: text, structured });
+//   } catch (err) {
+//     console.error("OCR error:", err.message);
+//     res
+//       .status(500)
+//       .json({ error: "OCR processing failed", detail: err.message });
+//   }
+// });
 
 // ============ FOOD IMAGE SEARCH (TheMealDB → Pexels → Unsplash) ============
 
