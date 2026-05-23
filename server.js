@@ -275,6 +275,7 @@ app.post("/url-extract", apiLimiter, async (req, res) => {
       thumbnail = result.thumbnail;
       influencer = result.influencer || "";
     } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
+      url = cleanYouTubeUrl(url);
       const result = await getYouTubeDescriptionAndThumbnail(url);
       captionText = result.caption;
       thumbnail = result.thumbnail;
@@ -371,6 +372,35 @@ app.post("/url-extract", apiLimiter, async (req, res) => {
       .json({ error: "Failed to process URL", detail: error.message });
   }
 });
+
+function cleanYouTubeUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+
+    // Handle youtu.be links
+    if (url.hostname.includes("youtu.be")) {
+      const videoId = url.pathname.slice(1);
+      return `https://www.youtube.com/watch?v=${videoId}`;
+    }
+
+    // Handle shorts
+    if (url.pathname.includes("/shorts/")) {
+      const videoId = url.pathname.split("/shorts/")[1].split("/")[0];
+      return `https://www.youtube.com/watch?v=${videoId}`;
+    }
+
+    // Standard watch URL
+    const videoId = url.searchParams.get("v");
+
+    if (videoId) {
+      return `https://www.youtube.com/watch?v=${videoId}`;
+    }
+
+    return rawUrl;
+  } catch {
+    return rawUrl;
+  }
+}
 
 // Recimate Feature
 app.post("/recipe-chat", apiLimiter, async (req, res) => {
@@ -623,7 +653,7 @@ async function getYouTubeDescriptionAndThumbnail(url) {
     const run = await apifyClient.actor("streamers/youtube-scraper").call({
       startUrls: [{ url }],
       maxVideos: 1,
-      maxResultsShorts: 1,
+      maxResultsShorts: 0,
       scrapeComments: true,
       maxComments: 5,
     });
@@ -641,7 +671,12 @@ async function getYouTubeDescriptionAndThumbnail(url) {
         ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
         : "";
 
-      let caption = video.description || video.text || "";
+      let caption =
+        video.description ||
+        video.descriptionText ||
+        video.text ||
+        video.snippet ||
+        "";
       const channelName = video.channelName || video.channelTitle || "";
 
       const comments = video.comments || video.commentsList || [];
