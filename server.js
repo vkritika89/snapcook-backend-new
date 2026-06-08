@@ -531,38 +531,87 @@ ALWAYS respond with a single valid JSON object — no markdown, no extra text:
 //   }
 // });
 
+// async function checkQuotaAllowed(deviceId, userId, rc_app_user_id) {
+//   if (!deviceId && !userId && !rc_app_user_id) return { allowed: true };
+//   // RC is source of truth for Pro. For logged-in users rc_app_user_id should
+//   // normally equal userId after Purchases.logIn(userId), but this fallback keeps
+//   // older clients working if they don't send rc_app_user_id yet.
+//   const rcAppUserId = rc_app_user_id || userId;
+//   if (rcAppUserId) {
+//     const isPro = await isRevenueCatPro(rcAppUserId);
+//     if (isPro) return { allowed: true, isPro: true };
+//   }
+//   // Non-Pro users use device quota.
+//   if (!deviceId) return { allowed: true };
+//   const { data: row } = await supabaseAdmin
+//     .from("extraction_usage")
+//     .select("count, quota_total, period_start")
+//     .eq("device_id", deviceId)
+//     .maybeSingle();
+//   if (!row) return { allowed: true, count: 0, quotaTotal: 10 };
+//   const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+//   const periodStart = row.period_start
+//     ? new Date(row.period_start).getTime()
+//     : 0;
+//   if (periodStart > 0 && Date.now() >= periodStart + WINDOW_MS) {
+//     return {
+//       allowed: true,
+//       count: 0,
+//       quotaTotal: row.quota_total ?? 10,
+//       windowExpired: true,
+//     };
+//   }
+//   const count = row.count ?? 0;
+//   const quotaTotal = row.quota_total ?? 10;
+//   return {
+//     allowed: count < quotaTotal,
+//     count,
+//     quotaTotal,
+//     remaining: Math.max(0, quotaTotal - count),
+//   };
+// }
+
+const FREE_WEEKLY_QUOTA_NEW = 5; // fallback when no row yet (new user)
+
 async function checkQuotaAllowed(deviceId, userId, rc_app_user_id) {
   if (!deviceId && !userId && !rc_app_user_id) return { allowed: true };
-  // RC is source of truth for Pro. For logged-in users rc_app_user_id should
-  // normally equal userId after Purchases.logIn(userId), but this fallback keeps
-  // older clients working if they don't send rc_app_user_id yet.
+
   const rcAppUserId = rc_app_user_id || userId;
   if (rcAppUserId) {
     const isPro = await isRevenueCatPro(rcAppUserId);
     if (isPro) return { allowed: true, isPro: true };
   }
-  // Non-Pro users use device quota.
+
   if (!deviceId) return { allowed: true };
+
   const { data: row } = await supabaseAdmin
     .from("extraction_usage")
     .select("count, quota_total, period_start")
     .eq("device_id", deviceId)
     .maybeSingle();
-  if (!row) return { allowed: true, count: 0, quotaTotal: 10 };
+
+  // No row yet → new user will get quota_total = 5 on first import
+  if (!row) {
+    return { allowed: true, count: 0, quotaTotal: FREE_WEEKLY_QUOTA_NEW };
+  }
+
   const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
   const periodStart = row.period_start
     ? new Date(row.period_start).getTime()
     : 0;
+
   if (periodStart > 0 && Date.now() >= periodStart + WINDOW_MS) {
     return {
       allowed: true,
       count: 0,
-      quotaTotal: row.quota_total ?? 10,
+      quotaTotal: row.quota_total ?? FREE_WEEKLY_QUOTA_NEW,
       windowExpired: true,
     };
   }
+
   const count = row.count ?? 0;
-  const quotaTotal = row.quota_total ?? 10;
+  const quotaTotal = row.quota_total ?? FREE_WEEKLY_QUOTA_NEW;
+
   return {
     allowed: count < quotaTotal,
     count,
