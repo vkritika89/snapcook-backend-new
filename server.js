@@ -179,6 +179,8 @@ export async function processWithLLM(inputText, language = "en") {
   const code = raw.split(/[-_]/)[0].toLowerCase();
   const languageName = languageMap[code] || "English";
 
+  console.log("🌐 extract language:", language);
+
   const systemPrompt = `You are a helpful assistant that extracts recipe information from given text if present and returns only valid JSON with the following structure.
 
 IMPORTANT:
