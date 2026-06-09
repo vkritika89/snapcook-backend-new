@@ -107,65 +107,6 @@ if (!GEMINI_API_KEY) {
   );
 }
 
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-
-// export async function processWithLLM(inputText, language = "en") {
-//   // Map language codes to full names for better LLM understanding
-//   const languageMap = {
-//     en: "English",
-//     fr: "French",
-//     de: "German",
-//     pt: "Portuguese",
-//     es: "Spanish",
-//   };
-
-//   const languageName = languageMap[language] || "English";
-
-//   const systemPrompt = `You are a helpful assistant that extracts recipe information from given text if present and returns only valid JSON with the following structure. IMPORTANT: All text in the response (title, ingredients, instructions, etc.) must be in ${languageName} language.
-
-//   {
-//     "title": string,
-//     "ingredients": string[],
-//     "instructions": string[],
-//     "influencer": string (optional),
-//     "nutritional_info": {
-//       "total_calories": string,
-//       "protein": string,
-//       "carbs": string,
-//       "fat": string
-//     },
-//     "cooking_time": string (optional),
-//     "serving_size": string (optional)
-//   }
-
-//   Rules:
-//   - Always return only JSON.
-//   - All text content (title, ingredients, instructions) must be in ${languageName}.
-//   - If any field is not present, leave it empty ("" or empty object/array).
-//   - Each instruction step should be a complete detailed sentence in ${languageName}.
-//   - Estimate total_calories, protein, carbs, and fat based on the ingredients and their mentioned quantities.
-//   - Return approximate values for the entire recipe (not per 100g).
-//   - for "serving_size": Extract number of servings. If a range is given (e.g. "2-3 servings" or "serves 2 to 3"), return the average as a single number (e.g. 2.5). Do NOT concatenate numbers (e.g. "2-3" ≠ 23). If unclear, return 1.
-//   - Nutritional values can remain as numbers (they don't need translation).
-//   `;
-
-//   const userPrompt = `Text: ${inputText}`;
-
-//   const response = await openai.chat.completions.create({
-//     model: "gpt-4o-mini",
-//     messages: [
-//       { role: "system", content: systemPrompt },
-//       { role: "user", content: userPrompt },
-//     ],
-//     temperature: 0,
-//     response_format: { type: "json_object" },
-//   });
-
-//   const content = response.choices[0].message.content;
-
-//   return JSON.parse(content);
-// }
-
 export async function processWithLLM(inputText, language = "en") {
   const languageMap = {
     en: "English",
@@ -173,6 +114,13 @@ export async function processWithLLM(inputText, language = "en") {
     de: "German",
     pt: "Portuguese",
     es: "Spanish",
+    ru: "Russian",
+    zh: "Simplified Chinese",
+    it: "Italian",
+    ja: "Japanese",
+    ko: "Korean",
+    sv: "Swedish",
+    nl: "Dutch",
   };
 
   const raw = String(language || "en").trim();
